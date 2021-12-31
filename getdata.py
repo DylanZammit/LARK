@@ -2,6 +2,7 @@ from numpy import *
 import pandas as pd
 import yfinance as yf
 from numpy.random import rand, randn
+from pandas.tseries.offsets import BDay
 
 class Data:
 
@@ -15,46 +16,47 @@ class Data:
 
     @classmethod
     def gen_data_t(self, n, equi=True):
-        X = sorted(rand(n)) if not equi else linspace(0, 1, n)
-        dB = randn(n)
-        Y = array([self.sigt(x)*e for x, e in zip(X, dB)])
-        return X, Y, dB
+        T = sorted(rand(n)) if not equi else linspace(0, 1, n)
+        dB = randn(n)*sqrt(1/n)
+        X = array([self.sigt(t)*db for t, db in zip(T, dB)])
+        return T, X, dB
 
     @classmethod
     def gen_data_tx(self, n, equi=True):
-        X = sorted(rand(n)) if not equi else linspace(0, 1, n)
+        T = sorted(rand(n)) if not equi else linspace(0, 1, n)
         dB = randn(n)*sqrt(1/n)
-        Y = [0]
-        for i in range(n):
-            db = dB[i]
-            y0 = Y[-1]
-            x0 = X[i]
-            Y.append(y0 + self.sigt(x0)*self.sigx(y0)*db)
-        return X, diff(Y), dB
+        X = [0]
+        for t, db in zip(T, dB):
+            x = X[-1]
+            X.append(x + self.sigt(t)*self.sigx(x)*db)
+        return T, diff(X), dB
 
     @classmethod
     def gen_data_x(self, n, equi=True):
-        X = sorted(rand(n)) if not equi else linspace(0, 1, n)
+        T = sorted(rand(n)) if not equi else linspace(0, 1, n)
         dB = randn(n)*sqrt(1/n)
-        Y = [0]
+        X = [0]
         for db in dB:
-            y0 = Y[-1]
-            Y.append(y0 + self.f(y0)*db)
-        return X, diff(Y), dB
+            x = X[-1]
+            X.append(x + self.sigx(x)*db)
+        return T, diff(X), dB
 
     @classmethod
     def get_stock(self, n=None, start='2010-01-01', end='2021-03-01', ticker='AAPL'):
-        print(f'Using {ticker} data from {start} to {end}')
         a = yf.Ticker(ticker)
         if n:
             end = pd.Timestamp.today().floor('D')
-            start = end-pd.Timedelta(f'{n}D')
+            start = end-BDay(n)
             start = str(start).split()[0]
             end = str(end).split()[0]
 
         df = a.history(start=start, end=end).Close
 
         X = diff(array(df.apply(log)))
-        T = linspace(0, 1, len(X))
-        dB = array([0]*len(X))
+        n = len(X)
+        T = linspace(0, 1, n)
+        dB = array([0]*n)
+
+        print(f'Using {ticker} data from {start} to {end} ({n} days)')
+        
         return T, X, dB

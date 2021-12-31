@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from numpy import *
 from numpy.random import rand, randint, randn, exponential
 from copy import deepcopy
-from scipy.stats import poisson, gamma
+from scipy.stats import poisson, gamma, norm
 
 from common import *
 from kernels import Kernels
@@ -18,7 +18,7 @@ from getdata import Data
 
 class LARK(Kernels):
 
-    def __init__(self, X, Y, p, kernel, **kwargs):
+    def __init__(self, X, Y, p, kernel, drift=None, **kwargs):
         '''
         kwargs are passed on as kernel parameters
         '''
@@ -38,16 +38,22 @@ class LARK(Kernels):
         self.b0 = 1e-8
 
         self.S = kernel
+        self.dt = 1/self.n
+        if drift == 'linear':
+            self.mu = mean(Y)
+        elif drift == 'zero':
+            self.mu = 0
+        print(f'{drift} drift = {self.mu}')
 
     def init_haar(self):
-        J = poisson.rvs(3) # what should this be??
+        J = poisson.rvs(10)
         W = rand(J)
         B = gamma.rvs(self.a['haar'], scale=1/self.b['haar'], size=J)
         s = gamma.rvs(self.al, scale=1/self.bl)
         return s, J, list(W), list(B)
     
     def init_expon(self):
-        J = poisson.rvs(10) # what should this be??
+        J = poisson.rvs(10)
         W = rand(J)
         B = gamma.rvs(self.a['expon'], scale=1/self.b['expon'], size=J)
         p = gamma.rvs(self.ap, scale=1/self.bp)
@@ -70,10 +76,12 @@ class LARK(Kernels):
 
         nus = [self.nu(x, p, s, W, B) for x in self.X]
 
-        T1 = -self.n*log(2*pi)
-        T2 = -sum([log(nui) for nui in nus])
-        T3 = -sum([y**2/nui for nui, y in zip(nus, self.Y)])
-        return (T1+T2+T3)/2
+        out = 0
+        for nui, x in zip(nus, self.Y):
+            mean = self.mu*self.dt
+            std = sqrt(nui*self.dt)
+            out += norm.logpdf(x, loc=mean, scale=std)
+        return out
 
     def rj_mcmc(self, p, s, J, W, B, kernel):
         p1 = p
@@ -200,6 +208,7 @@ class LARK(Kernels):
                 J, W, B = self.rj_mcmc(p, s, J, W, B, 'expon')
                 s = self.sample_s(p, s, W, B, 'expon')
                 p = self.sample_p(p, s, W, B, 'expon')
+                #p = 2
 
             if 'haar' in J:
                 J, W, B = self.rj_mcmc(p, s, J, W, B, 'haar')
@@ -222,7 +231,13 @@ def plot_out(posterior, lark, pp=False, real=False):
 
     dom = linspace(0, 1, m)
 
-    if not real: plt.plot(dom, Data.sigt(dom)**2, label='True volatility')
+    if not real: 
+        plt.plot(dom, Data.sigt(dom)**2, label='True volatility')
+    else:
+        import pandas as pd
+        # times lark.n??
+        rollvar = pd.Series(lark.Y).ewm(10).var().bfill().values*lark.n
+        plt.plot(linspace(0, 1, lark.n), rollvar, label='rolling var')
 
     plot_post = []
     for i, post in enumerate(posterior):
@@ -247,29 +262,30 @@ def plot_out(posterior, lark, pp=False, real=False):
     plt.plot(lark.X, lark.Y, alpha=0.4, label='Observations', color='black')
 
 
-    plt.figure()
-    dom = linspace(0, max([3, max(ps)]), m)
-    plt.plot(dom, [gamma.pdf(x, lark.ap, scale=1/lark.bp) for x in dom], label='prior')
-    plt.hist(ps, bins=20, label='posterior', density=True)
-    plt.title('p')
-    plt.legend()
+    if 1:
+        plt.figure()
+        dom = linspace(0, max([3, max(ps)]), m)
+        plt.plot(dom, [gamma.pdf(x, lark.ap, scale=1/lark.bp) for x in dom], label='prior')
+        plt.hist(ps, bins=20, label='posterior', density=True)
+        plt.title('p')
+        plt.legend()
 
-    fig, ax = plt.subplots(2, 1, sharex=True)
-    ax[0].plot(lark.X, lark.Y, alpha=0.4, label='Observations', color='black')
-    ax[1].plot(lark.X, cumsum(lark.Y), alpha=0.4, label='Observations', color='black')
+        fig, ax = plt.subplots(2, 1, sharex=True)
+        ax[0].plot(lark.X, lark.Y, alpha=0.4, label='Observations', color='black')
+        ax[1].plot(lark.X, cumsum(lark.Y), alpha=0.4, label='Observations', color='black')
 
-    plt.figure()
-    dom = linspace(0, 0.5, m)
-    plt.plot(dom, [gamma.pdf(x, lark.al, scale=1/lark.bl) for x in dom], label='prior')
-    if 'expon' in lark.S: plt.hist([x['expon'] for x in ss], bins=20, label='Posterior expon', density=True, alpha=0.8)
-    if 'haar' in lark.S: plt.hist([x['haar'] for x in ss], bins=20, label='Posterior haar', density=True, alpha=0.8)
-    plt.title('s')
-    plt.legend()
+        plt.figure()
+        dom = linspace(0, 0.5, m)
+        plt.plot(dom, [gamma.pdf(x, lark.al, scale=1/lark.bl) for x in dom], label='prior')
+        if 'expon' in lark.S: plt.hist([x['expon'] for x in ss], bins=20, label='Posterior expon', density=True, alpha=0.8)
+        if 'haar' in lark.S: plt.hist([x['haar'] for x in ss], bins=20, label='Posterior haar', density=True, alpha=0.8)
+        plt.title('s')
+        plt.legend()
 
-    plt.figure()
-    if 'expon' in lark.S: plt.plot([J['expon'] for _, _, J, _, _ in posterior], label='J expon trace')
-    if 'haar' in lark.S: plt.plot([J['haar'] for _, _, J, _, _ in posterior], label='J haar trace')
-    plt.legend()
+        plt.figure()
+        if 'expon' in lark.S: plt.plot([J['expon'] for _, _, J, _, _ in posterior], label='J expon trace')
+        if 'haar' in lark.S: plt.plot([J['haar'] for _, _, J, _, _ in posterior], label='J haar trace')
+        plt.legend()
     plt.show()
 
 def main():
@@ -278,6 +294,7 @@ def main():
     parser.add_argument('--N', help='MCMC iterations', type=int, default=1000)
     parser.add_argument('--bip', help='MCMC burn-in period', type=int, default=0)
     parser.add_argument('--p', type=str, default='0.4,0.4,0.2')
+    parser.add_argument('--drift', type=str, choices=['linear', 'zero'], default='zero')
     parser.add_argument('--real', help='Use real data', action='store_true')
     parser.add_argument('--ticker', type=str, help='ticker to get data', default='AAPL')
     parser.add_argument('--plot', help='Plot output', action='store_true')
@@ -292,10 +309,12 @@ def main():
 
     if args.real:
         X, Y, dB = Data.get_stock(n=args.n, ticker=args.ticker)
+        #Y -= mean(Y)
+        #args.drift = 'zero'
     else:
-        X, Y, dB = Data.gen_data_t(args.n)
+        X, Y, dB = Data.gen_data_t(n=args.n)
 
-    lark = LARK(X=X, Y=Y, p=p, kernel=args.kernel.split(','))
+    lark = LARK(X=X, Y=Y, p=p, kernel=args.kernel.split(','), drift=args.drift)
     if not args.load:
         res = lark(N=args.N, bip=args.bip)
     else:
