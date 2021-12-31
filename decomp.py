@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import yfinance as yf
 import argparse
 import json
 from time import time, sleep
@@ -13,6 +12,7 @@ from scipy.stats import poisson, gamma, norm
 
 from common import *
 from kernels import Kernels
+from getdata import Data
 
 class LARK(Kernels):
 
@@ -222,8 +222,7 @@ class LARK(Kernels):
         self.accepted = 0
         res = []
         p, J, W, B, p2, J2, W2, B2 = self.init()
-        p = 1.5
-        p2 = 1.5
+        p, p2 = 1.5, 1.5
 
         for i in range(N):
             progress(i, N, 'LARK')

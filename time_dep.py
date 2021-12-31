@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import yfinance as yf
 import pandas as pd
 import json
 from time import time
@@ -14,6 +13,7 @@ from scipy.stats import poisson, gamma
 
 from common import *
 from kernels import Kernels
+from getdata import Data
 
 
 class LARK(Kernels):
@@ -222,7 +222,7 @@ def plot_out(posterior, lark, pp=False, real=False):
 
     dom = linspace(0, 1, m)
 
-    if not real: plt.plot(dom, Data.f(dom)**2, label='True volatility')
+    if not real: plt.plot(dom, Data.sigt(dom)**2, label='True volatility')
 
     plot_post = []
     for i, post in enumerate(posterior):

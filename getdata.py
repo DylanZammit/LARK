@@ -1,4 +1,7 @@
 from numpy import *
+import pandas as pd
+import yfinance as yf
+from numpy.random import rand, randn
 
 class Data:
 
@@ -7,7 +10,7 @@ class Data:
         return 3/2+sin(2*(4*t-2))+2*exp(-16*(4*t-2)**2)
 
     @classmethod
-    def sigt(self, x):
+    def sigx(self, x):
         return sqrt(abs(x))+0.5
 
     @classmethod

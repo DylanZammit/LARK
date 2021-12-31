@@ -2,7 +2,6 @@
 
 import argparse
 import json
-import yfinance as yf
 from time import time, sleep
 import pdb
 import matplotlib.pyplot as plt
@@ -13,6 +12,7 @@ from scipy.stats import poisson, gamma, norm
 
 from common import *
 from kernels import Kernels
+from getdata import Data
 
 class LARK(Kernels):
 
@@ -154,7 +154,6 @@ class LARK(Kernels):
         self.accepted = 0
         res = []
         p, J, W, B = self.init()
-        p = 1.5
 
         for i in range(N):
             progress(i, N, 'LARK')
@@ -168,14 +167,14 @@ class LARK(Kernels):
         return res
 
 @timer
-def plot_out(posterior, lark, pp=False):
+def plot_out(posterior, lark, pp=False, real=False):
     nu = lark.nu
     N = len(posterior)
     ps = []
 
     if 1:
         dom = linspace(min(lark.cY), max(lark.cY), 1000)
-        if not real: plt.plot(dom, Data.f(dom)**2, label='True volatility^2')
+        if not real: plt.plot(dom, Data.sigx(dom)**2, label='True volatility^2')
 
         plot_post = []
         for i, post in enumerate(posterior):
