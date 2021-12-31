@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import yfinance as yf
 import argparse
 import json
 from time import time, sleep
@@ -12,29 +13,6 @@ from scipy.stats import poisson, gamma, norm
 
 from common import *
 from kernels import Kernels
-
-class Data:
-
-    @classmethod
-    def sigx(self, x):
-        return 2*sqrt(abs(x))+0.1
-
-    @classmethod
-    def sigt(self, t):
-        beta = 3+2/(3*pi) # integrates to 1
-        return (3 + sin(3/2*pi*t))/beta
-
-    @classmethod
-    def gen_data(self, n, equi=True):
-        X = sorted(rand(n)) if not equi else linspace(0, 1, n)
-        dB = randn(n)*sqrt(1/n)
-        Y = [0]
-        for i in range(n):
-            db = dB[i]
-            y0 = Y[-1]
-            x0 = X[i]
-            Y.append(y0 + self.sigt(x0)*self.sigx(y0)*db)
-        return X, diff(Y), dB
 
 class LARK(Kernels):
 
@@ -260,19 +238,20 @@ class LARK(Kernels):
         return res
 
 @timer
-def plot_out(posterior, lark, pp=False):
+def plot_out(posterior, lark, pp=False, real=False):
     nu = lark.nu
     N = len(posterior)
     ps = []
 
     if 1:
-        fig, ax = plt.subplots(2, 1)
         domt = linspace(0, 1, 1000)
         domx = linspace(min(lark.cY), max(lark.cY), 1000)
 
-        ax[0].plot(domt, Data.sigt(domt)**2, label='$\sigma^2(t)$')
-        ax[0].plot(lark.X, lark.Y, alpha=0.4, label='Observations', color='black')
-        ax[1].plot(domx, Data.sigx(domx)**2, label='$\sigma^2(x)$')
+        if not real:
+            fig, ax = plt.subplots(2, 1)
+            ax[0].plot(domt, Data.sigt(domt)**2, label='$\sigma^2(t)$')
+            ax[0].plot(lark.X, lark.Y, alpha=0.4, label='Observations', color='black')
+            ax[1].plot(domx, Data.sigx(domx)**2, label='$\sigma^2(x)$')
 
         plot_post_t = []
         plot_post_x = []
@@ -367,6 +346,8 @@ def main():
     parser.add_argument('--bip', help='MCMC burn-in period', type=int, default=0)
     parser.add_argument('--noequi', help='equally spaced', action='store_true')
     parser.add_argument('--p', type=str, default='0.4,0.4,0.2')
+    parser.add_argument('--real', help='Use real data', action='store_true')
+    parser.add_argument('--ticker', type=str, help='ticker to get data', default='AAPL')
     parser.add_argument('--post', help='Plot posterior samples', action='store_true')
     parser.add_argument('--plot', help='Plot output', action='store_true')
     parser.add_argument('--plot_samples', help='Plot output', action='store_true')
@@ -378,7 +359,10 @@ def main():
     p = tuple([float(x) for x in args.p.split(',')])
     assert isclose(sum(p), 1)
 
-    X, Y, dB = Data.gen_data(args.n, (not args.noequi))
+    if args.real:
+        X, Y, dB = Data.get_stock(n=args.n, ticker=args.ticker)
+    else:
+        X, Y, dB = Data.gen_data_t(args.n)
     lark = LARK(X=X, Y=Y, p=p, kernel=args.kernel)
     lark.dB = dB
     if not args.load:
@@ -392,7 +376,7 @@ def main():
         lark.res = res
 
     if args.save: lark.save(args.save)
-    if args.plot: plot_out(res, lark, args.plot_samples)
+    if args.plot: plot_out(res, lark, args.plot_samples, args.real)
 
 if __name__=='__main__':
     main()

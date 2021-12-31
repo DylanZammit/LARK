@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import yfinance as yf
 from time import time, sleep
 import pdb
 import matplotlib.pyplot as plt
@@ -12,24 +13,6 @@ from scipy.stats import poisson, gamma, norm
 
 from common import *
 from kernels import Kernels
-
-class Data:
-
-    @classmethod
-    def f(self, x):
-        #return (3 + sin(3/2*pi*x))/2
-        return 2*x**2+1
-        #return (1.02 + sin(2*pi*x))/2+1.5*(x>=0.5)
-
-    @classmethod
-    def gen_data(self, n, equi=True):
-        X = sorted(rand(n)) if not equi else linspace(0, 1, n)
-        dB = randn(n)*sqrt(1/n)
-        Y = [0]
-        for db in dB:
-            y0 = Y[-1]
-            Y.append(y0 + self.f(y0)*db)
-        return X, diff(Y), dB
 
 class LARK(Kernels):
 
@@ -192,7 +175,7 @@ def plot_out(posterior, lark, pp=False):
 
     if 1:
         dom = linspace(min(lark.cY), max(lark.cY), 1000)
-        plt.plot(dom, Data.f(dom)**2, label='True volatility^2')
+        if not real: plt.plot(dom, Data.f(dom)**2, label='True volatility^2')
 
         plot_post = []
         for i, post in enumerate(posterior):
@@ -271,6 +254,8 @@ def main():
     parser.add_argument('--bip', help='MCMC burn-in period', type=int, default=0)
     parser.add_argument('--noequi', help='equally spaced', action='store_true')
     parser.add_argument('--p', type=str, default='0.4,0.4,0.2')
+    parser.add_argument('--real', help='Use real data', action='store_true')
+    parser.add_argument('--ticker', type=str, help='ticker to get data', default='AAPL')
     parser.add_argument('--post', help='Plot posterior samples', action='store_true')
     parser.add_argument('--plot', help='Plot output', action='store_true')
     parser.add_argument('--plot_samples', help='Plot output', action='store_true')
@@ -282,7 +267,10 @@ def main():
     p = tuple([float(x) for x in args.p.split(',')])
     assert isclose(sum(p), 1)
 
-    X, Y, dB = Data.gen_data(args.n, (not args.noequi))
+    if args.real:
+        X, Y, dB = Data.get_stock(n=args.n, ticker=args.ticker)
+    else:
+        X, Y, dB = Data.gen_data_t(args.n)
     lark = LARK(X=X, Y=Y, p=p, kernel=args.kernel)
     lark.dB = dB
     if not args.load:
@@ -296,7 +284,7 @@ def main():
         lark.res = res
 
     if args.save: lark.save(args.save)
-    if args.plot: plot_out(res, lark, args.plot_samples)
+    if args.plot: plot_out(res, lark, args.plot_samples, args.real)
 
 if __name__=='__main__':
     main()
