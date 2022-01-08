@@ -26,6 +26,9 @@ class LARK(Kernels):
         self.a = {'expon': 1, 'haar': 1}
         self.b = {'expon': 1, 'haar': 1}
 
+        #self.a = {'expon': 5, 'haar': 0.01}
+        #self.b = {'expon': 2, 'haar': 1}
+
         self.ap = 2 # 4
         self.bp = 0.75 # 4
 
@@ -40,10 +43,15 @@ class LARK(Kernels):
         self.S = kernel
         self.dt = 1/self.n
         if drift == 'linear':
-            self.mu = mean(Y)
+            self.mu = {x: mean(Y) for x in X}
         elif drift == 'zero':
-            self.mu = 0
-        print(f'{drift} drift = {self.mu}')
+            self.mu = {x: 0 for x in X}
+        elif drift.startswith('EMA'): # ex EMA20
+            w = int(drift[3:])
+            mu = pd.Series(Y).ewm(w).mean().values
+            self.mu = {x: m for x, m in zip(X, mu)}
+        print(f'{drift=} ')
+        #print(f'{drift} drift = {self.mu}')
 
     def init_haar(self):
         J = poisson.rvs(10)
@@ -64,7 +72,7 @@ class LARK(Kernels):
         T = self.b0
         if 'expon' in self.S:
             kernel = 'expon'
-            T += sum([b*self.expon(x, w, p=p, s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
+            T += sum([b*self.expon_asym2(x, w, p=p, s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
 
         if 'haar' in self.S:
             kernel = 'haar'
@@ -73,12 +81,10 @@ class LARK(Kernels):
         return T
 
     def l(self, p, s, W, B):
-
-        nus = [self.nu(x, p, s, W, B) for x in self.X]
-
         out = 0
-        for nui, x in zip(nus, self.Y):
-            mean = self.mu*self.dt
+        for t, x in zip(self.X, self.Y):
+            nui = self.nu(t, p, s, W, B)
+            mean = self.mu[t]*self.dt
             std = sqrt(nui*self.dt)
             out += norm.logpdf(x, loc=mean, scale=std)
         return out
@@ -208,7 +214,6 @@ class LARK(Kernels):
                 J, W, B = self.rj_mcmc(p, s, J, W, B, 'expon')
                 s = self.sample_s(p, s, W, B, 'expon')
                 p = self.sample_p(p, s, W, B, 'expon')
-                #p = 2
 
             if 'haar' in J:
                 J, W, B = self.rj_mcmc(p, s, J, W, B, 'haar')
@@ -223,7 +228,7 @@ class LARK(Kernels):
         return res
 
 @timer
-def plot_out(posterior, lark, pp=False, real=False):
+def plot_out(posterior, lark, pp=False, real=False, mcmc_res=False):
     m = 1000
     nu = lark.nu
     N = len(posterior)
@@ -235,7 +240,7 @@ def plot_out(posterior, lark, pp=False, real=False):
         plt.plot(dom, Data.sigt(dom)**2, label='True volatility')
     else:
         import pandas as pd
-        # times lark.n??
+        # multiply by lark.n??
         rollvar = pd.Series(lark.Y).ewm(10).var().bfill().values*lark.n
         plt.plot(linspace(0, 1, lark.n), rollvar, label='rolling var')
 
@@ -262,7 +267,7 @@ def plot_out(posterior, lark, pp=False, real=False):
     plt.plot(lark.X, lark.Y, alpha=0.4, label='Observations', color='black')
 
 
-    if 1:
+    if mcmc_res:
         plt.figure()
         dom = linspace(0, max([3, max(ps)]), m)
         plt.plot(dom, [gamma.pdf(x, lark.ap, scale=1/lark.bp) for x in dom], label='prior')
@@ -294,10 +299,11 @@ def main():
     parser.add_argument('--N', help='MCMC iterations', type=int, default=1000)
     parser.add_argument('--bip', help='MCMC burn-in period', type=int, default=0)
     parser.add_argument('--p', type=str, default='0.4,0.4,0.2')
-    parser.add_argument('--drift', type=str, choices=['linear', 'zero'], default='zero')
+    parser.add_argument('--drift', type=str, default='zero')
     parser.add_argument('--real', help='Use real data', action='store_true')
     parser.add_argument('--ticker', type=str, help='ticker to get data', default='AAPL')
-    parser.add_argument('--plot', help='Plot output', action='store_true')
+    parser.add_argument('--noplot', help='Plot output', action='store_true')
+    parser.add_argument('--no_mcmc_plot', help='don\'t show mcmc convergence pltos', action='store_true')
     parser.add_argument('--plot_samples', help='Plot output', action='store_true')
     parser.add_argument('--save', type=str, help='file name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
@@ -309,8 +315,6 @@ def main():
 
     if args.real:
         X, Y, dB = Data.get_stock(n=args.n, ticker=args.ticker)
-        #Y -= mean(Y)
-        #args.drift = 'zero'
     else:
         X, Y, dB = Data.gen_data_t(n=args.n)
 
@@ -326,7 +330,7 @@ def main():
         lark.res = res
 
     if args.save: lark.save(args.save)
-    if args.plot: plot_out(res, lark, args.plot_samples, real=args.real)
+    if not args.noplot: plot_out(res, lark, args.plot_samples, real=args.real, mcmc_res=not args.no_mcmc_plot)
 
 if __name__=='__main__':
     main()

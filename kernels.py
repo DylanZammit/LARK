@@ -9,6 +9,10 @@ class Kernels:
         if x > y: return 0
         return exp(-abs(x-y)**p/s)
 
+    def expon_asym2(self, x, y, p=1, s=0.05):
+        if x < y: return 0
+        return exp(-abs(x-y)**p/s)
+
     def haar(self, x, y, s=0.1):
         return (abs(x-y)<=s)*1
 
