@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+from multiprocessing import Pool
+import os
 import argparse
 import pandas as pd
 import json
@@ -9,19 +11,47 @@ import matplotlib.pyplot as plt
 from numpy import *
 from numpy.random import rand, randint, randn, exponential
 from copy import deepcopy
-from scipy.stats import poisson, gamma, norm
+from scipy.stats import poisson, gamma, norm, nbinom, chi2
+from scipy.stats import rv_continuous
+from scipy.special import exp1
 
 from common import *
 from kernels import Kernels
 from getdata import Data
 
+def expinv(x, d=1e-9):
+    return chi2.ppf(1-x*d/2, d)/2
+
+class Birth(rv_continuous):
+
+    def __init__(self, eps, alpha, beta, *args, **kwargs):
+        self.eps = eps
+        self.alpha = alpha
+        self.beta = beta
+        assert alpha > 0 and beta > 0
+        super().__init__(*args, **kwargs)
+
+    def _pdf(self, x):
+        return self.alpha*exp(-self.beta*x)/x/exp1(self.eps)*(x>=self.eps)
+
+    def _logpdf(self, x):
+        if x < self.eps: 
+            import pdb; pdb.set_trace()
+            raise Exception
+        return log(self.alpha)-self.beta*x
+
+    def _ppf(self, x):
+        return expinv(exp1(self.eps)*(1-x))
 
 class LARK(Kernels):
 
-    def __init__(self, X, Y, p, kernel, drift=None, **kwargs):
+    def __init__(self, X, Y, p, eps, kernel, drift=None, nomulti=False, **kwargs):
         '''
         kwargs are passed on as kernel parameters
         '''
+        self.nomulti = nomulti
+        if not self.nomulti:
+            self.pool = Pool(os.cpu_count())
         
         self.a = {'expon': 1, 'haar': 1}
         self.b = {'expon': 1, 'haar': 1}
@@ -39,6 +69,7 @@ class LARK(Kernels):
         self.n = len(X)
         self.X, self.Y = X, Y
         self.b0 = 1e-8
+        self.s = 0.1 # proposal std
 
         self.S = kernel
         self.dt = 1/self.n
@@ -51,7 +82,9 @@ class LARK(Kernels):
             mu = pd.Series(Y).ewm(w).mean().values
             self.mu = {x: m for x, m in zip(X, mu)}
         print(f'{drift=} ')
-        #print(f'{drift} drift = {self.mu}')
+
+        self.eps = eps
+        self.birth = Birth(eps=eps, alpha=0.1, beta=1) # choose smarter a?
 
     def init_haar(self):
         J = poisson.rvs(10)
@@ -63,7 +96,7 @@ class LARK(Kernels):
     def init_expon(self):
         J = poisson.rvs(10)
         W = rand(J)
-        B = gamma.rvs(self.a['expon'], scale=1/self.b['expon'], size=J)
+        B = self.birth.rvs(size=J)
         p = gamma.rvs(self.ap, scale=1/self.bp)
         s = gamma.rvs(self.al, scale=1/self.bl)
         return p, s, J, list(W), list(B)
@@ -72,7 +105,8 @@ class LARK(Kernels):
         T = self.b0
         if 'expon' in self.S:
             kernel = 'expon'
-            T += sum([b*self.expon_asym2(x, w, p=p, s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
+            T += sum([b*self.expon(x, w, p=p, s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
+            #T += sum([b*self.expon_asym2(x, w, p=p, s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
 
         if 'haar' in self.S:
             kernel = 'haar'
@@ -80,14 +114,38 @@ class LARK(Kernels):
 
         return T
 
+
+    def _l(self, i):
+        t = self.X[i]
+        x = self.Y[i]
+        p, s, W, B = self.largs
+        nui = self.nu(t, p, s, W, B)
+        mean = self.mu[t]*self.dt
+        std = sqrt(nui*self.dt)
+        return norm.logpdf(x, loc=mean, scale=std)
+
+    def __getstate__(self):
+        self_dict = self.__dict__.copy()
+        del self_dict['pool']
+        return self_dict
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+
     def l(self, p, s, W, B):
         out = 0
-        for t, x in zip(self.X, self.Y):
-            nui = self.nu(t, p, s, W, B)
-            mean = self.mu[t]*self.dt
-            std = sqrt(nui*self.dt)
-            out += norm.logpdf(x, loc=mean, scale=std)
-        return out
+        if self.nomulti:
+            for t, x in zip(self.X, self.Y):
+                nui = self.nu(t, p, s, W, B)
+                mean = self.mu[t]*self.dt
+                std = sqrt(nui*self.dt)
+                out += norm.logpdf(x, loc=mean, scale=std)
+            return out
+        else:
+            self.largs = [p, s, W, B]
+            iters = arange(self.n)
+            X = self.pool.map(self._l, iters)
+            return sum(X)
 
     def rj_mcmc(self, p, s, J, W, B, kernel):
         p1 = p
@@ -102,43 +160,54 @@ class LARK(Kernels):
         if u < self.pb or J[kernel] == 0: # birth
             J1[kernel] += 1
             w = rand()
-            b = gamma.rvs(self.a[kernel], scale=1/self.b[kernel])
-    
+            b = self.birth.rvs()
+
             W1[kernel].append(w)
             B1[kernel].append(b)
-
             l1 = self.l(p1, s1, W1, B1)
 
+            qd = norm.cdf((self.eps-b)/self.s)
             A1 = l1-l0
-            A2 = log(self.pd)#-log(J)
-            A3 = -log(self.pb)#+log(J1)
-            A4 = A1+A2+A3
-            A = min([0, A4])
-
-        elif u < self.pb+self.pd: # death
-            J1[kernel] -= 1
+            #A2 = self.birth.logpdf(b)
+            A3 = log(self.pd+self.pu*qd)+log(J1[kernel])
+            A4 = -log(self.pb)-log(J[kernel])
+            #A5 = -log(norm.logpdf(b, loc=b, s))
+            #A6 = A1+A2+A3+A4+A4
+            A6 = A1+A3+A4
+            A = min([0, A6])
+        else:
             j = randint(0, J[kernel])
-            del W1[kernel][j], B1[kernel][j]
-            
-            l1 = self.l(p1, s1, W1, B1)
+            b = norm.rvs()*self.s+B[kernel][j]
+            w = W[kernel][j]
+            if b < self.eps or u < self.pb + self.pd: # death
+                J1[kernel] -= 1
+                j = randint(0, J[kernel])
+                del W1[kernel][j], B1[kernel][j]
+                
+                l1 = self.l(p1, s1, W1, B1)
 
-            A1 = l1-l0
-            A2 = log(self.pb)#-log(J)
-            A3 = -log(self.pd)#+log(J1)
-            A4 = A1+A2+A3
-            A = min([0, A4])
-            
-        else: # update
-            j = randint(0, J[kernel])
-            w = rand()
-            b = gamma.rvs(self.a[kernel], 1/self.b[kernel])
-            W1[kernel][j] = w
-            B1[kernel][j] = b
+                qd = norm.cdf((self.eps-b)/self.s)
+                A1 = l1-l0
+                #A2 = -self.birth.logpdf(b)
+                A3 = log(self.pb)+log(J1[kernel])
+                A4 = -log(self.pd+self.pu*qd)-log(J[kernel])
+                #A5 = lognorm(pdf(b[j))
+                #A6 = A1+A2+A3+A4+A5
+                A6 = A1+A3+A4
+                A = min([0, A6])
+            else: # update
+                bold = B1[kernel][j]
+                W1[kernel][j] = w
+                B1[kernel][j] = b
 
-            l1 = self.l(p1, s1, W1, B1)
+                l1 = self.l(p1, s1, W1, B1)
 
-            A1 = l1-l0
-            A = min([0, A1])
+                A1 = l1-l0
+                A2 = self.birth.logpdf(b)-self.birth.logpdf(bold)
+                A3 = norm.logpdf(b, loc=bold, scale=self.s)
+                A4 = -norm.logpdf(bold, loc=b, scale=self.s)
+                A5 = A1+A2+A3+A4
+                A = min([0, A5])
 
         e = exponential(1)
         if e+A > 0:
@@ -298,11 +367,13 @@ def main():
     parser.add_argument('--n', help='Sample size', type=int, default=100)
     parser.add_argument('--N', help='MCMC iterations', type=int, default=1000)
     parser.add_argument('--bip', help='MCMC burn-in period', type=int, default=0)
+    parser.add_argument('--eps', help='epsilon', type=float, default=0.1)
     parser.add_argument('--p', type=str, default='0.4,0.4,0.2')
     parser.add_argument('--drift', type=str, default='zero')
     parser.add_argument('--real', help='Use real data', action='store_true')
     parser.add_argument('--ticker', type=str, help='ticker to get data', default='AAPL')
     parser.add_argument('--noplot', help='Plot output', action='store_true')
+    parser.add_argument('--nomulti', help='no multiprocessing', action='store_true')
     parser.add_argument('--no_mcmc_plot', help='don\'t show mcmc convergence pltos', action='store_true')
     parser.add_argument('--plot_samples', help='Plot output', action='store_true')
     parser.add_argument('--save', type=str, help='file name to save to', default=None)
@@ -318,7 +389,7 @@ def main():
     else:
         X, Y, dB = Data.gen_data_t(n=args.n)
 
-    lark = LARK(X=X, Y=Y, p=p, kernel=args.kernel.split(','), drift=args.drift)
+    lark = LARK(X=X, Y=Y, p=p, eps=args.eps, kernel=args.kernel.split(','), drift=args.drift, nomulti=args.nomulti)
     if not args.load:
         res = lark(N=args.N, bip=args.bip)
     else:
