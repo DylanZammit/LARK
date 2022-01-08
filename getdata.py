@@ -32,14 +32,29 @@ class Data:
         return T, diff(X), dB
 
     @classmethod
-    def gen_data_x(self, n, equi=True):
-        T = sorted(rand(n)) if not equi else linspace(0, 1, n)
-        dB = randn(n)*sqrt(1/n)
+    def gen_data_x(self, n, a=0, b=1, equi=True):
+        T = sorted(rand(n)) if not equi else linspace(a, b, n)
+        dt = (b-a)/n
+        dB = randn(n)*sqrt(dt)
         X = [0]
         for db in dB:
             x = X[-1]
             X.append(x + self.sigx(x)*db)
         return T, diff(X), dB
+
+    @classmethod
+    def gen_data_b(self, n, a=0, b=1, p=0.5):
+        T = linspace(a, b, n)
+        dt = (b-a)/n
+        #mut = mu(T)
+
+        dB = randn(n)*sqrt(dt)
+        B = cumsum(dB)
+        phiB = self.sigx(B)
+
+        dX = phiB*dB
+        #dX = mut*dt + phiB*dB
+        return T, dX, dB
 
     @classmethod
     def get_stock(self, n=None, start='2010-01-01', end='2021-03-01', ticker='AAPL'):

@@ -45,13 +45,11 @@ class Birth(rv_continuous):
 
 class LARK(Kernels):
 
-    def __init__(self, X, Y, p, eps, kernel, drift=None, nomulti=False, **kwargs):
+    def __init__(self, X, Y, p, eps, kernel, drift=None, **kwargs):
         '''
         kwargs are passed on as kernel parameters
         '''
-        self.nomulti = nomulti
-        if not self.nomulti:
-            self.pool = Pool(os.cpu_count())
+        if not nomulti: self.pool = Pool(cores)
         
         self.a = {'expon': 1, 'haar': 1}
         self.b = {'expon': 1, 'haar': 1}
@@ -134,7 +132,7 @@ class LARK(Kernels):
 
     def l(self, p, s, W, B):
         out = 0
-        if self.nomulti:
+        if nomulti:
             for t, x in zip(self.X, self.Y):
                 nui = self.nu(t, p, s, W, B)
                 mean = self.mu[t]*self.dt
@@ -363,23 +361,28 @@ def plot_out(posterior, lark, pp=False, real=False, mcmc_res=False):
     plt.show()
 
 def main():
+    global nomulti, cores
     parser = argparse.ArgumentParser(description='MCMC setup args.')
     parser.add_argument('--n', help='Sample size', type=int, default=100)
     parser.add_argument('--N', help='MCMC iterations', type=int, default=1000)
     parser.add_argument('--bip', help='MCMC burn-in period', type=int, default=0)
-    parser.add_argument('--eps', help='epsilon', type=float, default=0.1)
+    parser.add_argument('--eps', help='epsilon', type=float, default=0.5)
     parser.add_argument('--p', type=str, default='0.4,0.4,0.2')
     parser.add_argument('--drift', type=str, default='zero')
     parser.add_argument('--real', help='Use real data', action='store_true')
     parser.add_argument('--ticker', type=str, help='ticker to get data', default='AAPL')
     parser.add_argument('--noplot', help='Plot output', action='store_true')
     parser.add_argument('--nomulti', help='no multiprocessing', action='store_true')
+    parser.add_argument('--cores', help='Number of cores to use', type=int, default=os.cpu_count())
     parser.add_argument('--no_mcmc_plot', help='don\'t show mcmc convergence pltos', action='store_true')
     parser.add_argument('--plot_samples', help='Plot output', action='store_true')
     parser.add_argument('--save', type=str, help='file name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
     parser.add_argument('--kernel', type=str, help='comma separated kernel functions', default='expon,haar')
     args = parser.parse_args()
+
+    nomulti = args.nomulti
+    cores = args.cores
 
     p = tuple([float(x) for x in args.p.split(',')])
     assert isclose(sum(p), 1)
@@ -389,7 +392,7 @@ def main():
     else:
         X, Y, dB = Data.gen_data_t(n=args.n)
 
-    lark = LARK(X=X, Y=Y, p=p, eps=args.eps, kernel=args.kernel.split(','), drift=args.drift, nomulti=args.nomulti)
+    lark = LARK(X=X, Y=Y, p=p, eps=args.eps, kernel=args.kernel.split(','), drift=args.drift)
     if not args.load:
         res = lark(N=args.N, bip=args.bip)
     else:
