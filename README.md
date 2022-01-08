@@ -29,4 +29,14 @@ This measure is not finite (<img src="https://render.githubusercontent.com/rende
  
 instead, and treat small jumps as a death process.
 
+## Synthetic Example
+
+Here we generate 1000 random data points with no drift and some volatility function depending on time. Below is a plot
+of the increments, and their cumulative sum.
+![sim_data](https://github.com/DylanZammit/LARK/blob/master/img/sim_data.png)
+Below is the result of the non-parametric LARK estimate along with its 95% credible interval with just 1000 iterations and no burn-in-period. As kernels, the exponential kernel and Haar kernels were used, and their parameters were left free to be chosen by the Bayesian model.
+![sim_res](https://github.com/DylanZammit/LARK/blob/master/img/sim_res.png)
+
+
 [Reference papers properly by Chong Tu, Wolpert etc]
+
