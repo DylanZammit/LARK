@@ -38,6 +38,23 @@ of the increments, and their cumulative sum.
 Below is the result of the non-parametric LARK estimate along with its 95% credible interval with just 1000 iterations and no burn-in-period. As kernels, the exponential kernel and Haar kernels were used, and their parameters were left free to be chosen by the Bayesian model.
 ![sim_res](https://github.com/DylanZammit/LARK/blob/master/img/sim_res.png)
 
+## Real Example
+
+We use the last 1000 days of daily AAPL stock price data and try to estimate the volatility using the LARK model. We
+assume that the model has a constant linear drift <img src="https://render.githubusercontent.com/render/math?math=\mu">, which we take to simple be the average daily return a priori. We use
+10,000 iterations of RJ-MCMC, with <img src="https://render.githubusercontent.com/render/math?math=\epsilon=0.1"> and
+the asymetric exponential kernel given by
+
+<img src="https://render.githubusercontent.com/render/math?math=K(w, y)=e^{-(w-y)^p/s}I_{w>y}(w)">
+
+Below are the real AAPL daily increments and stock price, followed by the estimated volaitlity with its 95% credible
+interval. Superimposed in blue is a rolling exponentially-weighted variance (EWV) with centre-of-mass taken to be 10.
+
+![real_data](https://github.com/DylanZammit/LARK/blob/master/img/real_data.png)
+![real_res](https://github.com/DylanZammit/LARK/blob/master/img/real_res.png)
+
+We can see that the locations of jumps in variability are captured quite well in a similar manner to the EWV, and then
+discipates in time as the initial shock loses its effect.
 
 [Reference papers properly by Chong Tu, Wolpert etc]
 
