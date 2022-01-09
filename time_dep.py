@@ -97,8 +97,8 @@ class LARK(Kernels):
         out = self.b0
         if 'expon' in self.S:
             kernel = 'expon'
-            out += sum([b*self.expon(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
-            #out += sum([b*self.expon_asym2(t, w, p=p, s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
+            #out += sum([b*self.expon(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
+            out += sum([b*self.expon_asym2(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
 
         if 'haar' in self.S:
             kernel = 'haar'
@@ -133,11 +133,11 @@ class LARK(Kernels):
         out = 0
         self.largs = [p, s, W, B]
         if nomulti:
-            return sum([_l(i) for i in range(n)])
+            out = sum([_l(i) for i in range(n)])
         else:
             iters = arange(self.n)
-            out = self.pool.map(self._l, iters)
-            return sum(out)
+            out = sum(self.pool.map(self._l, iters))
+        return out
 
     def rj_mcmc(self, kernel):
         J1 = deepcopy(self.J)
@@ -219,7 +219,7 @@ class LARK(Kernels):
             self.accepted['s'] += 1
 
     def sample_p(self, kernel):
-        p1 = deepcopy(self.s)
+        p1 = deepcopy(self.p)
         p1[kernel] = gamma.rvs(self.ap, scale=1/self.bp)
 
         l0 = self.l()
@@ -343,10 +343,10 @@ def plot_out(posterior, lark, pp=False, real=False, mcmc_res=False):
 def main():
     global nomulti, cores
     parser = argparse.ArgumentParser(description='MCMC setup args.')
-    parser.add_argument('--n', help='Sample size', type=int, default=100)
-    parser.add_argument('--N', help='MCMC iterations', type=int, default=1000)
-    parser.add_argument('--bip', help='MCMC burn-in period', type=int, default=0)
-    parser.add_argument('--eps', help='epsilon', type=float, default=0.5)
+    parser.add_argument('--n', help='Sample size [100]', type=int, default=100)
+    parser.add_argument('--N', help='MCMC iterations [1000]', type=int, default=1000)
+    parser.add_argument('--bip', help='MCMC burn-in period [0]', type=int, default=0)
+    parser.add_argument('--eps', help='epsilon [0.5]', type=float, default=0.5)
     parser.add_argument('--p', type=str, default='0.4,0.4,0.2')
     parser.add_argument('--drift', type=str, default='zero')
     parser.add_argument('--real', help='Use real data', action='store_true')
