@@ -11,13 +11,14 @@ and our aim is to non-parametrically estimate the volatility function <img src="
 - <img src="https://render.githubusercontent.com/render/math?math=\sigma(t, X_t) = \sigma(t)">,
 - <img src="https://render.githubusercontent.com/render/math?math=\sigma(t, X_t) = \sigma(X_t)">,
 - <img src="https://render.githubusercontent.com/render/math?math=\sigma(t, X_t) = \sigma(t)\sigma(X_t)"> (not so promising so far).
-Future work might be done on the form of <img src="https://render.githubusercontent.com/render/math?math=\sigma(B_t)">, in other words, the volatility depends on the underlying Brownian Motion process.
+
+The main difference between these different types of methods would be the formulation of the likelihood function, which are all very similar. Future work might be done on the form of <img src="https://render.githubusercontent.com/render/math?math=\sigma(B_t)">, in other words, the volatility depends on the underlying Brownian Motion process. The likelihood function would again be similar (at least visually), but this introduces a new problem. We would have to treat the underlying BM as a latent variable since it is not directly observable. To do this we would treat each BM increment as an unknown "parameter" of interest in our Bayesian model and hence infer a posterior distribution over this BM. This would be computationally much more intensive since we would have introduced as many new parameters as sample size. 
 ## Likelihood
 If our sample consists of <img src="https://render.githubusercontent.com/render/math?math=X_{t_1}, \cdots, X_{t_n}">, then we can write our log-likelihood in the following manner.
 
 <img src="https://render.githubusercontent.com/render/math?math=\ell(X|\Theta)=-\frac{n}{2}\log(2\pi \Delta t)-\frac{n}{2}\sum_{i=1}^n\log(\eta(X_{t_i}|\Theta))-\frac{1}{2\Delta t}\sum_{i=1}^n\frac{(\mu_{t_i}-X_{t_i})^2}{\eta(X_{t_i}|\Theta)}">
 
-Since this is quite expensive to compute, especially for large sample sizes, multiprocessing was used to increase efficiency.
+Since this is quite computationally expensive, especially for large sample sizes, multiprocessing is exploited to increase efficiency.
 ## Prior
 For the Lévy process we take the Gamma process which has Lévy measure <img src="https://render.githubusercontent.com/render/math?math=\nu"> given by 
 
