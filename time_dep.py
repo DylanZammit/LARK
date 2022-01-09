@@ -97,8 +97,8 @@ class LARK(Kernels):
         out = self.b0
         if 'expon' in self.S:
             kernel = 'expon'
-            #out += sum([b*self.expon(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
-            out += sum([b*self.expon_asym2(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
+            out += sum([b*self.expon(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
+            #out += sum([b*self.expon_asym2(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
 
         if 'haar' in self.S:
             kernel = 'haar'
