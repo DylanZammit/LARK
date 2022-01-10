@@ -1,4 +1,33 @@
 from time import time
+from scipy.stats import poisson, gamma, norm, nbinom, chi2
+from scipy.special import exp1
+from scipy.stats import rv_continuous
+from numpy import *
+
+def expinv(x, d=1e-9):
+    return chi2.ppf(1-x*d/2, d)/2
+
+class Birth(rv_continuous):
+
+    def __init__(self, eps, alpha, beta, *args, **kwargs):
+        self.eps = eps
+        self.alpha = alpha
+        self.beta = beta
+        assert alpha > 0 and beta > 0
+        super().__init__(*args, **kwargs)
+
+    def _pdf(self, x):
+        return self.alpha*exp(-self.beta*x)/x/exp1(self.eps)*(x>=self.eps)
+
+    def _logpdf(self, x):
+        if x < self.eps: 
+            import pdb; pdb.set_trace()
+            raise Exception
+        return log(self.alpha)-self.beta*x
+
+    def _ppf(self, x):
+        return expinv(exp1(self.eps)*(1-x))
+
 
 def timer(func):
     def wrapper_function(*args, **kwargs):

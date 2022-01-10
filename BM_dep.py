@@ -12,6 +12,7 @@ from numpy import *
 from numpy.random import rand, randint, randn, exponential
 from copy import deepcopy
 from scipy.stats import poisson, gamma, norm, nbinom, chi2
+from scipy.stats import rv_continuous
 
 from common import *
 from kernels import Kernels
@@ -23,7 +24,9 @@ class LARK(Kernels):
         '''
         kwargs are passed on as kernel parameters
         '''
-        if not nomulti: self.pool = Pool(cores)
+        if cores > 1: self.pool = Pool(cores)
+
+        self.ax_remove = None
         
         self.ap = 2 # 4
         self.bp = 0.75 # 4
@@ -36,6 +39,9 @@ class LARK(Kernels):
         self.T, self.X = T, X
         self.b0 = 1e-8
         self.s_proposal = 0.1 # proposal std
+
+        self.doma = min(self.X)*1.2
+        self.domb = max(self.X)*1.2
 
         self.S = kernel
         self.dt = 1/self.n
@@ -52,31 +58,34 @@ class LARK(Kernels):
         self.eps = eps
         self.birth = Birth(eps=eps, alpha=0.1, beta=1) # choose smarter a?
 
+    def init_Z(self):
+        self.Z = cumsum(randn(self.n)*sqrt(self.dt))
+
     def init_haar(self):
         J = poisson.rvs(10)
         self.J['haar'] = J
         self.s['haar'] = gamma.rvs(self.al, scale=1/self.bl)
-        self.W['haar'] = list(rand(J))
+        self.W['haar'] = list(rand(J)*(self.domb-self.doma)+self.doma)
         self.B['haar'] = list(self.birth.rvs(size=J))
     
     def init_expon(self):
         J = poisson.rvs(10)
         self.J['expon'] = J
-        self.W['expon'] = list(rand(J))
+        self.W['expon'] = list(rand(J)*(self.domb-self.doma)+self.doma)
         self.B['expon'] = list(self.birth.rvs(size=J))
         self.s['expon'] = gamma.rvs(self.al, scale=1/self.bl)
         self.p['expon'] = gamma.rvs(self.ap, scale=1/self.bp)
 
-    def nu(self, t, p, s, W, B):
+    def nu(self, z, p, s, W, B):
         out = self.b0
         if 'expon' in self.S:
             kernel = 'expon'
-            out += sum([b*self.expon(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
-            #out += sum([b*self.expon_asym2(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
+            out += sum([b*self.expon(z, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
+            #out += sum([b*self.expon_asym2(z, w, p=p, s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
 
         if 'haar' in self.S:
             kernel = 'haar'
-            out += sum([b*self.haar(t, w, s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
+            out += sum([b*self.haar(z, w, s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
 
         return out
 
@@ -84,8 +93,8 @@ class LARK(Kernels):
     def _l(self, i):
         t = self.T[i]
         x = self.X[i]
-        p, s, W, B = self.largs
-        nui = self.nu(t, p, s, W, B)
+        p, s, W, B, Z = self.largs
+        nui = self.nu(Z[i], p, s, W, B)
         mean = self.mu[t]*self.dt
         std = sqrt(nui*self.dt)
         return norm.logpdf(x, loc=mean, scale=std)
@@ -98,20 +107,21 @@ class LARK(Kernels):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    def l(self, p=None, s=None, W=None, B=None):
+    def l(self, p=None, s=None, W=None, B=None, Z=None):
         p = p if p else self.p
         s = s if s else self.s
         W = W if W else self.W
         B = B if B else self.B
+        Z = Z if Z is not None else self.Z
 
         out = 0
-        self.largs = [p, s, W, B]
-        if nomulti:
-            out = sum([_l(i) for i in range(n)])
+        self.largs = [p, s, W, B, Z]
+        if cores == 1:
+            return sum([self._l(i) for i in range(self.n)])
         else:
             iters = arange(self.n)
-            out = sum(self.pool.map(self._l, iters))
-        return out
+            out = self.pool.map(self._l, iters)
+            return sum(out)
 
     def rj_mcmc(self, kernel):
         J1 = deepcopy(self.J)
@@ -123,7 +133,7 @@ class LARK(Kernels):
 
         if u < self.pb or self.J[kernel] == 0: # birth
             J1[kernel] += 1
-            w = rand()
+            w = rand()*(self.domb-self.doma)+self.doma
             b = self.birth.rvs()
 
             W1[kernel].append(w)
@@ -206,6 +216,48 @@ class LARK(Kernels):
             self.p = p1
             self.accepted['p'] += 1
 
+    def sample_Z(self):
+        cache = False
+        Zold = deepcopy(self.Z) # for plotting purposes
+        for i in range(self.n):
+            zprev = self.Z[i-1] if i>0 else 0
+            z0 = self.Z[i]
+            #dw = randn()*sqrt(self.dt)*4
+            dw = randn()*sqrt(self.dt)*1.5
+
+            Z1 = deepcopy(self.Z)
+            Z1[i:] += dw 
+
+            l0 = self.l() if not cache else l00
+            l1 = self.l(Z=Z1)
+            A1 = l1-l0+norm.logpdf(Z1[i]-zprev, scale=sqrt(self.dt))-norm.logpdf(z0-zprev, scale=sqrt(self.dt))
+            #A1 = l1-l0+norm.logpdf(z0+self.Z[i], loc=z1, scale=sqrt(self.dt)/10)-norm.logpdf(z0+z1, loc=self.Z[i], scale=sqrt(self.dt)/10)
+            A = min([0, A1])
+
+            e = exponential(1)
+            if e+A > 0: 
+                self.Z = deepcopy(Z1)
+                self.accepted['Z'] += 1
+                cache = False
+            else:
+                l00 = l0
+                cache = True
+        
+        if 0:
+            if not self.ax_remove:
+                self.ax_remove = plt.axes()
+                self.ax_remove.plot(cumsum(dB), linestyle='--')
+            self.ax_remove.plot(self.Z, alpha=0.2)
+            #plt.legend()
+            #plt.show()
+        if 0:
+            plt.plot(cumsum(dB), linestyle='--')
+            plt.plot(Zold,label='old')
+            plt.plot(self.Z, label='new')
+            plt.legend()
+            plt.show()
+
+
     def save(self, fn):
         out = {
             'T': list(self.T),
@@ -217,10 +269,12 @@ class LARK(Kernels):
 
     @timer
     def __call__(self, N=100, bip=0):
-        self.accepted = {'expon': 0, 'haar': 0, 'p': 0, 's': 0}
+        self.accepted = {'expon': 0, 'haar': 0, 'p': 0, 's': 0, 'Z': 0}
         res = []
 
         self.p, self.s, self.J, self.W, self.B = {'expon': 0}, {'expon': 0, 'haar': 0}, {}, {}, {}
+
+        self.init_Z()
 
         if 'expon' in self.S: 
             self.init_expon()
@@ -240,7 +294,9 @@ class LARK(Kernels):
                 self.rj_mcmc('haar')
                 self.sample_s('haar')
 
-            if i > bip: res.append([self.p, self.s, self.J, self.W, self.B])
+            self.sample_Z()
+
+            if i > bip: res.append([self.p, self.s, self.J, self.W, self.B, self.Z])
 
         self.res = res
         for k, v in self.accepted.items():
@@ -255,37 +311,47 @@ def plot_out(posterior, lark, pp=False, real=False, mcmc_res=False):
     N = len(posterior)
     ps, ss = [], []
 
-    dom = linspace(0, 1, m)
+    dom = linspace(-3, 3, m)
 
-    if not real: 
-        plt.plot(dom, Data.sigt(dom)**2, label='True volatility')
-    else:
-        import pandas as pd
-        # multiply by lark.n??
-        rollvar = pd.Series(lark.X).ewm(10).var().bfill().values*lark.n
-        plt.plot(linspace(0, 1, lark.n), rollvar, label='rolling var')
 
     plot_post = []
+    Z_post = []
     for i, post in enumerate(posterior):
         progress(i, N, 'Plotting')
-        p, s, J, W, B = post
+        p, s, J, W, B, Z = post
         ps.append(p)
         ss.append(s)
-        plot_post.append([nu(x, p, s, W, B) for x in dom])
+        plot_post.append([nu(z, p, s, W, B) for z in dom])
+        Z_post.append(list(Z))
         if pp: plt.plot(dom, plot_post[-1], alpha=0.05, color='r')
     plot_post = matrix(plot_post)
+    Z_post = matrix(Z_post)
+    if 1:
+        zquantiles = []
+        for i in range(lark.n): zquantiles.append(quantile(Z_post[:,i], [0.025, 0.975]))
+        zquantiles = matrix(zquantiles)
+        Z_post = array(Z_post.mean(0))[0]
+        plt.plot(lark.T, cumsum(dB))
+        plt.plot(lark.T, Z_post, label='Posterior Mean')
+        plt.fill_between(lark.T, array(zquantiles[:, 0].flatten())[0], array(zquantiles[:, 1].flatten())[0], alpha=0.3, color='red')
+        plt.show()
+
 
     quantiles = []
     for i in range(m): quantiles.append(quantile(plot_post[:,i], [0.025, 0.975]))
     quantiles = matrix(quantiles)
 
+    if not real: 
+        plt.plot(dom, Data.sigx(dom)**2, label='True volatility')
+    else:
+        import pandas as pd
+        rollvar = pd.Series(lark.X).ewm(10).var().bfill().values*lark.n
+        plt.plot(linspace(0, 1, lark.n), rollvar, label='rolling var')
     plot_post = array(plot_post.mean(0))[0]
     plt.plot(dom, plot_post, label='Posterior Mean')
     plt.fill_between(dom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.3, color='red')
 
-    #plt.title(f'n={lark.n}, N={n}, kernel=$exp(-10|x-y|)$')
     plt.legend()
-    plt.plot(lark.T, lark.X, alpha=0.4, label='Observations', color='black')
 
     if mcmc_res:
         plt.figure()
@@ -309,25 +375,25 @@ def plot_out(posterior, lark, pp=False, real=False, mcmc_res=False):
         plt.legend()
 
         plt.figure()
-        if 'expon' in lark.S: plt.plot([J['expon'] for _, _, J, _, _ in posterior], label='J expon trace')
-        if 'haar' in lark.S: plt.plot([J['haar'] for _, _, J, _, _ in posterior], label='J haar trace')
+        if 'expon' in lark.S: plt.plot([J['expon'] for _, _, J, _, _, _ in posterior], label='J expon trace')
+        if 'haar' in lark.S: plt.plot([J['haar'] for _, _, J, _, _, _ in posterior], label='J haar trace')
         plt.legend()
     plt.show()
 
 def main():
-    global nomulti, cores
+    global nomulti, cores, dB
     parser = argparse.ArgumentParser(description='MCMC setup args.')
-    parser.add_argument('--n', help='Sample size [100]', type=int, default=100)
-    parser.add_argument('--N', help='MCMC iterations [1000]', type=int, default=1000)
-    parser.add_argument('--bip', help='MCMC burn-in period [0]', type=int, default=0)
-    parser.add_argument('--eps', help='epsilon [0.5]', type=float, default=0.5)
+    parser.add_argument('--n', help='Sample size', type=int, default=100)
+    parser.add_argument('--N', help='MCMC iterations', type=int, default=1000)
+    parser.add_argument('--bip', help='MCMC burn-in period', type=int, default=0)
+    parser.add_argument('--eps', help='epsilon', type=float, default=0.5)
     parser.add_argument('--p', type=str, default='0.4,0.4,0.2')
     parser.add_argument('--drift', type=str, default='zero')
     parser.add_argument('--real', help='Use real data', action='store_true')
     parser.add_argument('--ticker', type=str, help='ticker to get data', default='AAPL')
     parser.add_argument('--noplot', help='Plot output', action='store_true')
-    parser.add_argument('--nomulti', help='no multiprocessing', action='store_true')
-    parser.add_argument('--cores', help='Number of cores to use', type=int, default=os.cpu_count())
+    #parser.add_argument('--nomulti', help='no multiprocessing', action='store_true')
+    parser.add_argument('--cores', help='Number of cores to use', type=int, default=1)
     parser.add_argument('--no_mcmc_plot', help='don\'t show mcmc convergence pltos', action='store_true')
     parser.add_argument('--plot_samples', help='Plot output', action='store_true')
     parser.add_argument('--save', type=str, help='file name to save to', default=None)
@@ -335,7 +401,6 @@ def main():
     parser.add_argument('--kernel', type=str, help='comma separated kernel functions', default='expon,haar')
     args = parser.parse_args()
 
-    nomulti = args.nomulti
     cores = args.cores
 
     p = tuple([float(x) for x in args.p.split(',')])
@@ -344,7 +409,7 @@ def main():
     if args.real:
         T, X, dB = Data.get_stock(n=args.n, ticker=args.ticker)
     else:
-        T, X, dB = Data.gen_data_t(n=args.n)
+        T, X, dB = Data.gen_data_b(n=args.n)
 
     lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=args.kernel.split(','), drift=args.drift)
     if not args.load:
