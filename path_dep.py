@@ -109,7 +109,7 @@ class LARK(Kernels):
         out = 0
         self.largs = [p, s, W, B]
         if nomulti:
-            out = sum([_l(i) for i in range(n)])
+            out = sum([self._l(i) for i in range(self.n-1)])
         else:
             iters = arange(self.n-1) # minus 1???
             out = sum(self.pool.map(self._l, iters))
