@@ -12,7 +12,7 @@ class Data:
 
     @classmethod
     def sigx(self, x):
-        return sqrt(abs(x))+0.5
+        return sqrt(abs(x)+0.5)
 
     @classmethod
     def gen_data_t(self, n, equi=True):
@@ -57,7 +57,7 @@ class Data:
         return T, dX, dB
 
     @classmethod
-    def get_stock(self, n=None, start='2010-01-01', end='2021-03-01', ticker='AAPL'):
+    def get_stock(self, n=None, start='2010-01-01', end='2021-03-01', ticker='AAPL', returns=True):
         a = yf.Ticker(ticker)
         if n:
             end = pd.Timestamp.today().floor('D')
@@ -67,7 +67,7 @@ class Data:
 
         df = a.history(start=start, end=end).Close
 
-        X = diff(array(df.apply(log)))
+        X = diff(array(df.apply(log))) if returns else diff(insert(array(df), 0, 0))
         n = len(X)
         T = linspace(0, 1, n)
         dB = array([0]*n)
