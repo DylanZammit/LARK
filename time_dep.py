@@ -37,7 +37,7 @@ class LARK(Kernels):
         self.b0 = 1e-8
         self.s_proposal = 0.1 # proposal std
 
-        self.S = kernel
+        self.kernels = kernel
         self.dt = 1/self.n
         if drift == 'linear':
             self.mu = {t: mean(X) for t in T}
@@ -52,40 +52,26 @@ class LARK(Kernels):
         self.eps = eps
         self.birth = Birth(eps=eps, alpha=0.1, beta=1) # choose smarter a?
 
-    def init_haar(self):
+    def init(self, kernel):
         J = poisson.rvs(10)
-        self.J['haar'] = J
-        self.s['haar'] = gamma.rvs(self.al, scale=1/self.bl)
-        self.W['haar'] = list(rand(J))
-        self.B['haar'] = list(self.birth.rvs(size=J))
+        self.J[kernel] = J
+        self.W[kernel] = list(rand(J))
+        self.B[kernel] = list(self.birth.rvs(size=J))
+        self.S[kernel] = list(gamma.rvs(self.al, scale=1/self.bp, size=J))
+        self.P[kernel] = list(gamma.rvs(self.ap, scale=1/self.bp, size=J)) # not needed
     
-    def init_expon(self):
-        J = poisson.rvs(10)
-        self.J['expon'] = J
-        self.W['expon'] = list(rand(J))
-        self.B['expon'] = list(self.birth.rvs(size=J))
-        self.s['expon'] = gamma.rvs(self.al, scale=1/self.bl)
-        self.p['expon'] = gamma.rvs(self.ap, scale=1/self.bp)
-
-    def nu(self, t, p, s, W, B):
+    def nu(self, t, P, S, W, B):
         out = self.b0
-        if 'expon' in self.S:
-            kernel = 'expon'
-            out += sum([b*self.expon(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
-            #out += sum([b*self.expon_asym2(t, w, p=p[kernel], s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
-
-        if 'haar' in self.S:
-            kernel = 'haar'
-            out += sum([b*self.haar(t, w, s=s[kernel]) for w, b in zip(W[kernel], B[kernel])])
-
+        for kernel in self.kernels:
+            k = getattr(self, kernel)
+            out += sum([b*k(t, w, p=p, s=s) for w, b, p, s in zip(W[kernel], B[kernel], P[kernel], S[kernel])])
         return out
-
 
     def _l(self, i):
         t = self.T[i]
         x = self.X[i]
-        p, s, W, B = self.largs
-        nui = self.nu(t, p, s, W, B)
+        P, S, W, B = self.largs
+        nui = self.nu(t, P, S, W, B)
         mean = self.mu[t]*self.dt
         std = sqrt(nui*self.dt)
         return norm.logpdf(x, loc=mean, scale=std)
@@ -98,14 +84,14 @@ class LARK(Kernels):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    def l(self, p=None, s=None, W=None, B=None):
-        p = p if p else self.p
-        s = s if s else self.s
+    def l(self, P=None, S=None, W=None, B=None):
+        P = P if P else self.P
+        S = S if S else self.S
         W = W if W else self.W
         B = B if B else self.B
 
         out = 0
-        self.largs = [p, s, W, B]
+        self.largs = [P, S, W, B]
         if nomulti:
             out = sum([self._l(i) for i in range(self.n)])
         else:
@@ -117,18 +103,25 @@ class LARK(Kernels):
         J1 = deepcopy(self.J)
         W1 = deepcopy(self.W)
         B1 = deepcopy(self.B)
+        S1 = deepcopy(self.S)
+        P1 = deepcopy(self.P)
         u = rand()
 
         l0 = self.l()
+        self.update_step = False
 
         if u < self.pb or self.J[kernel] == 0: # birth
             J1[kernel] += 1
             w = rand()
             b = self.birth.rvs()
+            s = gamma.rvs(self.al, scale=1/self.bl)
+            p = gamma.rvs(self.ap, scale=1/self.bp)
 
             W1[kernel].append(w)
             B1[kernel].append(b)
-            l1 = self.l(W=W1, B=B1)
+            S1[kernel].append(s)
+            P1[kernel].append(p)
+            l1 = self.l(W=W1, B=B1, S=S1, P=P1)
 
             qd = norm.cdf((self.eps-b)/self.s_proposal)
             A1 = l1-l0
@@ -142,13 +135,12 @@ class LARK(Kernels):
         else:
             j = randint(0, self.J[kernel])
             b = norm.rvs()*self.s_proposal+self.B[kernel][j]
-            w = self.W[kernel][j]
             if b < self.eps or u < self.pb + self.pd: # death
                 J1[kernel] -= 1
                 j = randint(0, self.J[kernel])
-                del W1[kernel][j], B1[kernel][j]
+                del W1[kernel][j], B1[kernel][j], S1[kernel][j], P1[kernel][j]
                 
-                l1 = self.l(W=W1, B=B1)
+                l1 = self.l(W=W1, B=B1, S=S1, P=P1)
 
                 qd = norm.cdf((self.eps-b)/self.s_proposal)
                 A1 = l1-l0
@@ -161,10 +153,8 @@ class LARK(Kernels):
                 A = min([0, A6])
             else: # update
                 bold = B1[kernel][j]
-                W1[kernel][j] = w
-                B1[kernel][j] = b
 
-                l1 = self.l(W=W1, B=B1)
+                l1 = self.l(W=W1, B=B1, S=S1, P=P1)
 
                 A1 = l1-l0
                 A2 = self.birth.logpdf(b)-self.birth.logpdf(bold)
@@ -173,38 +163,70 @@ class LARK(Kernels):
                 A5 = A1+A2+A3+A4
                 A = min([0, A5])
 
+                self.update_step = True
+                self.update_comp = j
+
         e = exponential(1)
         if e+A > 0:
             self.accepted[kernel] += 1
-            self.J, self.W, self.B = deepcopy(J1), deepcopy(W1), deepcopy(B1)
+            self.J, self.W, self.B, self.S, self.P = deepcopy(J1), deepcopy(W1), deepcopy(B1), deepcopy(S1), deepcopy(P1)
+        else:
+            self.update_step = False
 
     def sample_s(self, kernel):
-        s1 = deepcopy(self.s)
-        s1[kernel] = gamma.rvs(self.al, scale=1/self.bl)
+        S1 = deepcopy(self.S)
+        sold = log(S1[kernel][self.update_comp])
+        snew = sold + norm.rvs()*self.s_proposal
+        S1[kernel][self.update_comp] = exp(snew)
 
         l0 = self.l()
-        l1 = self.l(s=s1)
-        A1 = l1-l0+gamma.logpdf(self.s[kernel], self.al, scale=1/self.bl)-gamma.logpdf(s1[kernel], self.al, scale=1/self.bl)
-        A = min([0, A1])
+        l1 = self.l(S=S1)
+        A1 = l1-l0
+        A2 = gamma.logpdf(exp(sold), self.al, scale=1/self.bl)
+        A3 = -gamma.logpdf(exp(snew), self.al, scale=1/self.bl)
+        A4 = A1+A2+A3
+        A = min([0, A4])
 
         e = exponential(1)
         if e+A > 0: 
-            self.s = s1
-            self.accepted['s'] += 1
+            self.S = deepcopy(S1)
+            #self.accepted['s'] += 1
 
     def sample_p(self, kernel):
-        p1 = deepcopy(self.p)
-        p1[kernel] = gamma.rvs(self.ap, scale=1/self.bp)
+        P1 = deepcopy(self.P)
+        pold = log(P1[kernel][self.update_comp])
+        pnew = pold + norm.rvs()*self.s_proposal
+        P1[kernel][self.update_comp] = exp(pnew)
 
         l0 = self.l()
-        l1 = self.l(p=p1)
-        A1 = l1-l0+gamma.logpdf(self.p[kernel], self.ap, scale=1/self.bp)-gamma.logpdf(p1[kernel], self.ap, scale=1/self.bp)
-        A = min([0, A1])
+        l1 = self.l(P=P1)
+        A1 = l1-l0
+        A2 = gamma.logpdf(exp(pold), self.ap, scale=1/self.bp)
+        A3 = -gamma.logpdf(exp(pnew), self.ap, scale=1/self.bp)
+        A4 = A1+A2+A3
+        A = min([0, A4])
 
         e = exponential(1)
         if e+A > 0: 
-            self.p = p1
-            self.accepted['p'] += 1
+            self.P = P1
+            #self.accepted['p'] += 1
+
+    def sample_w(self, kernel):
+        W1 = deepcopy(self.W)
+        wold = W1[kernel][self.update_comp]
+        wnew = wold + norm.rvs()*self.s_proposal
+        W1[kernel][self.update_comp] = exp(wnew)
+
+        l0 = self.l()
+        l1 = self.l(W=W1)
+        A1 = l1-l0
+        A = min([0, A1])
+
+        if not 0 < wnew < 1: return
+        e = exponential(1)
+        if e+A > 0: 
+            self.W = W1
+            #self.accepted['p'] += 1
 
     def save(self, fn):
         out = {
@@ -217,30 +239,25 @@ class LARK(Kernels):
 
     @timer
     def __call__(self, N=100, bip=0):
-        self.accepted = {'expon': 0, 'haar': 0, 'p': 0, 's': 0}
+        self.accepted = {k: 0 for k in self.kernels}
         res = []
 
-        self.p, self.s, self.J, self.W, self.B = {'expon': 0}, {'expon': 0, 'haar': 0}, {}, {}, {}
+        self.P, self.S, self.J, self.W, self.B = {}, {}, {}, {}, {}
 
-        if 'expon' in self.S: 
-            self.init_expon()
-
-        if 'haar' in self.S: 
-            self.init_haar()
+        for k in self.kernels: self.init(k)
 
         for i in range(N):
             progress(i, N, 'LARK')
 
-            if 'expon' in self.J:
-                self.rj_mcmc('expon')
-                self.sample_s('expon')
-                self.sample_p('expon')
+            #loop through chosen kernels
+            for k in self.kernels:
+                self.rj_mcmc(k)
+                if self.update_step:
+                    self.sample_p(k)
+                    self.sample_s(k)
+                    self.sample_w(k)
 
-            if 'haar' in self.J:
-                self.rj_mcmc('haar')
-                self.sample_s('haar')
-
-            if i > bip: res.append([self.p, self.s, self.J, self.W, self.B])
+            if i > bip: res.append([self.P, self.S, self.J, self.W, self.B])
 
         self.res = res
         for k, v in self.accepted.items():
@@ -249,7 +266,7 @@ class LARK(Kernels):
         return res
 
 @timer
-def plot_out(posterior, lark, pp=False, real=False, mcmc_res=False):
+def plot_out(posterior, lark, pp=False, real=False):
     m = 1000
     nu = lark.nu
     N = len(posterior)
@@ -268,10 +285,10 @@ def plot_out(posterior, lark, pp=False, real=False, mcmc_res=False):
     plot_post = []
     for i, post in enumerate(posterior):
         progress(i, N, 'Plotting')
-        p, s, J, W, B = post
-        ps.append(p)
-        ss.append(s)
-        plot_post.append([nu(x, p, s, W, B) for x in dom])
+        P, S, J, W, B = post
+        #ps.append(p)
+        #ss.append(s)
+        plot_post.append([nu(x, P, S, W, B) for x in dom])
         if pp: plt.plot(dom, plot_post[-1], alpha=0.05, color='r')
     plot_post = matrix(plot_post)
 
@@ -287,31 +304,11 @@ def plot_out(posterior, lark, pp=False, real=False, mcmc_res=False):
     plt.legend()
     plt.plot(lark.T, lark.X, alpha=0.4, label='Observations', color='black')
 
-    if mcmc_res:
-        plt.figure()
-        dom = linspace(0, max([3, max([p['expon'] for p in ps])]), m)
-        #dom = linspace(0, max([3, max(ps['expon'])]), m)
-        plt.plot(dom, [gamma.pdf(x, lark.ap, scale=1/lark.bp) for x in dom], label='prior')
-        plt.hist([p['expon'] for p in ps], bins=20, label='posterior', density=True)
-        plt.title('p')
-        plt.legend()
+    plt.figure()
+    for k in lark.kernels:
+        plt.plot([J[k] for _, _, J, _, _ in posterior], label=f'J {k} trace')
 
-        fig, ax = plt.subplots(2, 1, sharex=True)
-        ax[0].plot(lark.T, lark.X, alpha=0.4, label='Observations', color='black')
-        ax[1].plot(lark.T, cumsum(lark.X), alpha=0.4, label='Observations', color='black')
-
-        plt.figure()
-        dom = linspace(0, 0.5, m)
-        plt.plot(dom, [gamma.pdf(x, lark.al, scale=1/lark.bl) for x in dom], label='prior')
-        if 'expon' in lark.S: plt.hist([x['expon'] for x in ss], bins=20, label='Posterior expon', density=True, alpha=0.8)
-        if 'haar' in lark.S: plt.hist([x['haar'] for x in ss], bins=20, label='Posterior haar', density=True, alpha=0.8)
-        plt.title('s')
-        plt.legend()
-
-        plt.figure()
-        if 'expon' in lark.S: plt.plot([J['expon'] for _, _, J, _, _ in posterior], label='J expon trace')
-        if 'haar' in lark.S: plt.plot([J['haar'] for _, _, J, _, _ in posterior], label='J haar trace')
-        plt.legend()
+    plt.legend()
     plt.show()
 
 def main():
@@ -328,7 +325,7 @@ def main():
     parser.add_argument('--noplot', help='Plot output', action='store_true')
     parser.add_argument('--nomulti', help='no multiprocessing', action='store_true')
     parser.add_argument('--cores', help='Number of cores to use', type=int, default=os.cpu_count())
-    parser.add_argument('--no_mcmc_plot', help='don\'t show mcmc convergence pltos', action='store_true')
+    #parser.add_argument('--no_mcmc_plot', help='don\'t show mcmc convergence pltos', action='store_true')
     parser.add_argument('--plot_samples', help='Plot output', action='store_true')
     parser.add_argument('--save', type=str, help='file name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
@@ -358,7 +355,7 @@ def main():
         lark.res = res
 
     if args.save: lark.save(args.save)
-    if not args.noplot: plot_out(res, lark, args.plot_samples, real=args.real, mcmc_res=not args.no_mcmc_plot)
+    if not args.noplot: plot_out(res, lark, args.plot_samples, real=args.real)
 
 if __name__=='__main__':
     main()
