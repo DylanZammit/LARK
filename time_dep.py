@@ -25,20 +25,23 @@ class LARK(Kernels):
         '''
         if not nomulti: self.pool = Pool(cores)
         
-        self.ap = 2 # 4
-        self.bp = 0.75 # 4
+        self.ap = 4
+        self.bp = 2
 
-        self.al = 1.5
-        self.bl = 10
+        self.al = 2
+        self.bl = 200
 
         self.pb, self.pd, self.pu = p
         self.n = len(T)
         self.T, self.X = T, X
         self.b0 = 1e-8
-        self.s_proposal = 0.1 # proposal std
+        self.b_proposal = 0.1 # depending on application
+        self.w_proposal = 0.1
+        self.s_proposal = 0.2
+        self.p_proposal = 0.2
 
         self.kernels = kernel
-        self.dt = 1/self.n
+        self.dt = 1/self.n # assume domain is [0,1]
         if drift == 'linear':
             self.mu = {t: mean(X) for t in T}
         elif drift == 'zero':
@@ -50,15 +53,19 @@ class LARK(Kernels):
         print(f'{drift=} ')
 
         self.eps = eps
-        self.birth = Birth(eps=eps, alpha=0.1, beta=1) # choose smarter a?
+        #alpha = 1
+        alpha = 1
+        beta = 1
+        self.birth = Birth(eps=eps, alpha=alpha, beta=beta) # can model a
+        self.vplus = 30
 
     def init(self, kernel):
-        J = poisson.rvs(10)
+        J = poisson.rvs(self.vplus)
         self.J[kernel] = J
         self.W[kernel] = list(rand(J))
         self.B[kernel] = list(self.birth.rvs(size=J))
-        self.S[kernel] = list(gamma.rvs(self.al, scale=1/self.bp, size=J))
-        self.P[kernel] = list(gamma.rvs(self.ap, scale=1/self.bp, size=J)) # not needed
+        self.S[kernel] = list(gamma.rvs(self.al, scale=1/self.bl, size=J))
+        self.P[kernel] = list(gamma.rvs(self.ap, scale=1/self.bp, size=J))
     
     def nu(self, t, P, S, W, B):
         out = self.b0
@@ -123,7 +130,7 @@ class LARK(Kernels):
             P1[kernel].append(p)
             l1 = self.l(W=W1, B=B1, S=S1, P=P1)
 
-            qd = norm.cdf((self.eps-b)/self.s_proposal)
+            qd = norm.cdf((self.eps-b)/self.b_proposal)
             A1 = l1-l0
             #A2 = self.birth.logpdf(b)
             A3 = log(self.pd+self.pu*qd)+log(J1[kernel])
@@ -134,15 +141,15 @@ class LARK(Kernels):
             A = min([0, A6])
         else:
             j = randint(0, self.J[kernel])
-            b = norm.rvs()*self.s_proposal+self.B[kernel][j]
+            b = norm.rvs()*self.b_proposal+self.B[kernel][j]
             if b < self.eps or u < self.pb + self.pd: # death
                 J1[kernel] -= 1
-                j = randint(0, self.J[kernel])
+                #j = randint(0, self.J[kernel])
                 del W1[kernel][j], B1[kernel][j], S1[kernel][j], P1[kernel][j]
                 
                 l1 = self.l(W=W1, B=B1, S=S1, P=P1)
 
-                qd = norm.cdf((self.eps-b)/self.s_proposal)
+                qd = norm.cdf((self.eps-b)/self.b_proposal)
                 A1 = l1-l0
                 #A2 = -self.birth.logpdf(b)
                 A3 = log(self.pb)+log(J1[kernel])
@@ -154,12 +161,12 @@ class LARK(Kernels):
             else: # update
                 bold = B1[kernel][j]
 
-                l1 = self.l(W=W1, B=B1, S=S1, P=P1)
+                l1 = self.l(W=W1, B=B1)
 
                 A1 = l1-l0
                 A2 = self.birth.logpdf(b)-self.birth.logpdf(bold)
-                A3 = norm.logpdf(b, loc=bold, scale=self.s_proposal)
-                A4 = -norm.logpdf(bold, loc=b, scale=self.s_proposal)
+                A3 = norm.logpdf(b, loc=bold, scale=self.b_proposal)
+                A4 = -norm.logpdf(bold, loc=b, scale=self.b_proposal)
                 A5 = A1+A2+A3+A4
                 A = min([0, A5])
 
@@ -190,12 +197,12 @@ class LARK(Kernels):
         e = exponential(1)
         if e+A > 0: 
             self.S = deepcopy(S1)
-            #self.accepted['s'] += 1
+            self.accepted['s'] += 1
 
     def sample_p(self, kernel):
         P1 = deepcopy(self.P)
         pold = log(P1[kernel][self.update_comp])
-        pnew = pold + norm.rvs()*self.s_proposal
+        pnew = pold + norm.rvs()*self.p_proposal
         P1[kernel][self.update_comp] = exp(pnew)
 
         l0 = self.l()
@@ -209,12 +216,14 @@ class LARK(Kernels):
         e = exponential(1)
         if e+A > 0: 
             self.P = P1
-            #self.accepted['p'] += 1
+            self.accepted['p'] += 1
 
     def sample_w(self, kernel):
         W1 = deepcopy(self.W)
         wold = W1[kernel][self.update_comp]
-        wnew = wold + norm.rvs()*self.s_proposal
+        wnew = wold + norm.rvs()*self.w_proposal
+        if not 0 < wnew < 1: return
+
         W1[kernel][self.update_comp] = exp(wnew)
 
         l0 = self.l()
@@ -222,11 +231,10 @@ class LARK(Kernels):
         A1 = l1-l0
         A = min([0, A1])
 
-        if not 0 < wnew < 1: return
         e = exponential(1)
         if e+A > 0: 
             self.W = W1
-            #self.accepted['p'] += 1
+            self.accepted['w'] += 1
 
     def save(self, fn):
         out = {
@@ -240,6 +248,8 @@ class LARK(Kernels):
     @timer
     def __call__(self, N=100, bip=0):
         self.accepted = {k: 0 for k in self.kernels}
+        self.accepted.update({k: 0 for k in ['s','p', 'w']})
+
         res = []
 
         self.P, self.S, self.J, self.W, self.B = {}, {}, {}, {}, {}

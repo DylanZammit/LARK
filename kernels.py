@@ -3,7 +3,7 @@ from numpy import *
 class Kernels:
 
     def expon(self, x, y, p=1, s=0.05, **kwargs):
-        return exp(-abs(x-y)**p/s)
+        return exp(-abs(x-y)**p/2/s)
 
     def aexpon(self, x, y, p=1, s=0.05, side='right', **kwargs):
         if side=='right' and x < y: return 0
