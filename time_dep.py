@@ -144,7 +144,6 @@ class LARK(Kernels):
             b = norm.rvs()*self.b_proposal+self.B[kernel][j]
             if b < self.eps or u < self.pb + self.pd: # death
                 J1[kernel] -= 1
-                #j = randint(0, self.J[kernel])
                 del W1[kernel][j], B1[kernel][j], S1[kernel][j], P1[kernel][j]
                 
                 l1 = self.l(W=W1, B=B1, S=S1, P=P1)
@@ -160,6 +159,7 @@ class LARK(Kernels):
                 A = min([0, A6])
             else: # update
                 bold = B1[kernel][j]
+                B1[kernel][j] = b
 
                 l1 = self.l(W=W1, B=B1)
 
