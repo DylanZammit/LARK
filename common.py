@@ -7,6 +7,21 @@ from numpy import *
 def expinv(x, d=1e-9):
     return chi2.ppf(1-x*d/2, d)/2
 
+class Gamma(rv_continuous):
+
+    def __init__(self, eps, nu, *args, **kwargs):
+        self.nu = nu
+        self.eps = eps
+        self.a = eps/nu
+        assert nu > 0
+        super().__init__(a=self.a, **kwargs)
+
+    def _pdf(self, x):
+        return exp(-x*self.nu)/x/exp1(self.eps) if x > self.a else 0
+
+    def _logpdf(self, x):
+        return -log(x)-x*self.nu-log(exp1(self.eps))
+
 class Birth(rv_continuous):
 
     def __init__(self, eps, alpha, beta, *args, **kwargs):

@@ -65,13 +65,14 @@ class Data:
             start = str(start).split()[0]
             end = str(end).split()[0]
 
-        df = a.history(start=start, end=end).Close
+        b = a.history(start=start, end=end)
+        df = b.Close
 
         X = diff(array(df.apply(log))) if returns else diff(insert(array(df), 0, 0))
         n = len(X)
         T = linspace(0, 1, n)
-        dB = array([0]*n)
+        Treal = b.index
 
         print(f'Using {ticker} data from {start} to {end} ({n} days)')
         
-        return T, X, dB
+        return T, X, Treal

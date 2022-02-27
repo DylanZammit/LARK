@@ -36,9 +36,10 @@ class LARK(Kernels):
         self.T, self.X = T, X
         self.b0 = 1e-8
         self.b_proposal = 0.1 # depending on application
+        #self.b_proposal = 2
         self.w_proposal = 0.1
-        self.s_proposal = 0.2
-        self.p_proposal = 0.2
+        self.s_proposal = 0.1
+        self.p_proposal = 0.1
 
         self.kernels = kernel
         self.dt = 1/self.n # assume domain is [0,1]
@@ -54,10 +55,16 @@ class LARK(Kernels):
 
         self.eps = eps
         #alpha = 1
-        alpha = 1
-        beta = 1
-        self.birth = Birth(eps=eps, alpha=alpha, beta=beta) # can model a
-        self.vplus = 30
+        if 0:
+            alpha = 1
+            beta = 1
+            self.birth = Birth(eps=eps, alpha=alpha, beta=beta) # can model a
+        else:
+            self.birth = Gamma(eps=eps, nu=1)
+            #self.birth = Gamma(eps=eps, nu=25)
+            #self.birth = Gamma(eps=eps, nu=1/3)
+        self.vplus = 10 # should be a param
+        #self.vplus = 5 # should be a param
 
     def init(self, kernel):
         J = poisson.rvs(self.vplus)
@@ -106,6 +113,34 @@ class LARK(Kernels):
             out = sum(self.pool.map(self._l, iters))
         return out
 
+    def qd(self, l0, l1, bold, kernel):
+        qd = norm.cdf((self.eps-bold)/self.b_proposal)
+        l = l1-l0
+        prior = self.vplus # vplus here?
+        prop_n = log(self.pb)
+        prop_d = log(self.pd+self.pu*qd)-log(self.J[kernel])
+        prop = prop_n-prop_d
+
+        return min([0, l+prior+prop])
+
+    def qb(self, l0, l1, bnew, kernel):
+        qd = norm.cdf((self.eps-bnew)/self.b_proposal)
+        l = l1-l0
+        prior = -self.vplus
+
+        prop_n = log(self.pd+self.pu*qd)-log(self.J[kernel]+1)
+        prop_d = log(self.pb)
+        prop = prop_n-prop_d
+
+        return min([0, l+prior+prop])
+
+    def qu(self, l0, l1, bold, bnew, kernel):
+        l = l1-l0
+        prior = self.birth.logpdf(bnew)-self.birth.logpdf(bold)
+        prop = 0
+
+        return min([0, l+prior+prop])
+
     def rj_mcmc(self, kernel):
         J1 = deepcopy(self.J)
         W1 = deepcopy(self.W)
@@ -121,7 +156,9 @@ class LARK(Kernels):
             J1[kernel] += 1
             w = rand()
             b = self.birth.rvs()
-            s = gamma.rvs(self.al, scale=1/self.bl)
+
+            # maybe perturb
+            s = gamma.rvs(self.al, scale=1/self.bl) 
             p = gamma.rvs(self.ap, scale=1/self.bp)
 
             W1[kernel].append(w)
@@ -130,15 +167,8 @@ class LARK(Kernels):
             P1[kernel].append(p)
             l1 = self.l(W=W1, B=B1, S=S1, P=P1)
 
-            qd = norm.cdf((self.eps-b)/self.b_proposal)
-            A1 = l1-l0
-            #A2 = self.birth.logpdf(b)
-            A3 = log(self.pd+self.pu*qd)+log(J1[kernel])
-            A4 = -log(self.pb)-log(self.J[kernel])
-            #A5 = -log(norm.logpdf(b, loc=b, s))
-            #A6 = A1+A2+A3+A4+A4
-            A6 = A1+A3+A4
-            A = min([0, A6])
+            A = self.qb(l0, l1, b, kernel)
+
         else:
             j = randint(0, self.J[kernel])
             b = norm.rvs()*self.b_proposal+self.B[kernel][j]
@@ -147,28 +177,16 @@ class LARK(Kernels):
                 del W1[kernel][j], B1[kernel][j], S1[kernel][j], P1[kernel][j]
                 
                 l1 = self.l(W=W1, B=B1, S=S1, P=P1)
+                bold = self.B[kernel][j]
+                A = self.qd(l0, l1, bold, kernel)
 
-                qd = norm.cdf((self.eps-b)/self.b_proposal)
-                A1 = l1-l0
-                #A2 = -self.birth.logpdf(b)
-                A3 = log(self.pb)+log(J1[kernel])
-                A4 = -log(self.pd+self.pu*qd)-log(self.J[kernel])
-                #A5 = lognorm(pdf(b[j))
-                #A6 = A1+A2+A3+A4+A5
-                A6 = A1+A3+A4
-                A = min([0, A6])
             else: # update
                 bold = B1[kernel][j]
                 B1[kernel][j] = b
 
-                l1 = self.l(W=W1, B=B1)
+                l1 = self.l(B=B1)
+                A = self.qu(l0, l1, bold, b, kernel)
 
-                A1 = l1-l0
-                A2 = self.birth.logpdf(b)-self.birth.logpdf(bold)
-                A3 = norm.logpdf(b, loc=bold, scale=self.b_proposal)
-                A4 = -norm.logpdf(bold, loc=b, scale=self.b_proposal)
-                A5 = A1+A2+A3+A4
-                A = min([0, A5])
 
                 self.update_step = True
                 self.update_comp = j
@@ -179,12 +197,14 @@ class LARK(Kernels):
             self.J, self.W, self.B, self.S, self.P = deepcopy(J1), deepcopy(W1), deepcopy(B1), deepcopy(S1), deepcopy(P1)
         else:
             self.update_step = False
+            #print('NO')
 
     def sample_s(self, kernel):
         S1 = deepcopy(self.S)
         sold = log(S1[kernel][self.update_comp])
         snew = sold + norm.rvs()*self.s_proposal
         S1[kernel][self.update_comp] = exp(snew)
+        print('s', exp(sold), exp(snew))
 
         l0 = self.l()
         l1 = self.l(S=S1)
@@ -204,6 +224,7 @@ class LARK(Kernels):
         pold = log(P1[kernel][self.update_comp])
         pnew = pold + norm.rvs()*self.p_proposal
         P1[kernel][self.update_comp] = exp(pnew)
+        print('p', exp(pold), exp(pnew))
 
         l0 = self.l()
         l1 = self.l(P=P1)
@@ -257,6 +278,7 @@ class LARK(Kernels):
         for k in self.kernels: self.init(k)
 
         for i in range(N):
+            self.iter = i
             progress(i, N, 'LARK')
 
             #loop through chosen kernels
@@ -268,6 +290,10 @@ class LARK(Kernels):
                     self.sample_w(k)
 
             if i > bip: res.append([self.P, self.S, self.J, self.W, self.B])
+
+            if i%100==0 and 0:
+                plt.vlines(self.W['expon'], [0]*self.J['expon'], self.B['expon'])
+                plt.show()
 
         self.res = res
         for k, v in self.accepted.items():
@@ -285,12 +311,12 @@ def plot_out(posterior, lark, pp=False, real=False):
     dom = linspace(0, 1, m)
 
     if not real: 
-        plt.plot(dom, Data.sigt(dom)**2, label='True volatility')
+        plt.plot(dom, Data.sigt(dom), label='True volatility')
+        #plt.plot(dom, Data.sigt(dom)**2, label='True volatility')
     else:
         import pandas as pd
-        # multiply by lark.n??
-        rollvar = pd.Series(lark.X).ewm(10).var().bfill().values*lark.n
-        plt.plot(linspace(0, 1, lark.n), rollvar, label='rolling var')
+        rollstd = pd.Series(lark.X).ewm(10).std().bfill().values
+        plt.plot(linspace(0, 1, lark.n), rollstd, label='rolling std')
 
     plot_post = []
     for i, post in enumerate(posterior):
@@ -298,7 +324,11 @@ def plot_out(posterior, lark, pp=False, real=False):
         P, S, J, W, B = post
         #ps.append(p)
         #ss.append(s)
-        plot_post.append([nu(x, P, S, W, B) for x in dom])
+        if not real:
+            plot_post.append([sqrt(nu(x, P, S, W, B)) for x in dom])
+        else:
+            plot_post.append([sqrt(nu(x, P, S, W, B)*lark.dt) for x in dom])
+
         if pp: plt.plot(dom, plot_post[-1], alpha=0.05, color='r')
     plot_post = matrix(plot_post)
 
@@ -339,7 +369,7 @@ def main():
     parser.add_argument('--plot_samples', help='Plot output', action='store_true')
     parser.add_argument('--save', type=str, help='file name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
-    parser.add_argument('--kernel', type=str, help='comma separated kernel functions', default='expon,haar')
+    parser.add_argument('--kernel', type=str, help='comma separated kernel functions', default='expon')
     args = parser.parse_args()
 
     nomulti = args.nomulti
@@ -348,10 +378,11 @@ def main():
     p = tuple([float(x) for x in args.p.split(',')])
     assert isclose(sum(p), 1)
 
+    Treal = None
     if args.real:
         T, X, dB = Data.get_stock(n=args.n, ticker=args.ticker)
     else:
-        T, X, dB = Data.gen_data_t(n=args.n)
+        T, X, Treal = Data.gen_data_t(n=args.n)
 
     lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=args.kernel.split(','), drift=args.drift)
     if not args.load:
