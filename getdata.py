@@ -4,7 +4,21 @@ import yfinance as yf
 from numpy.random import rand, randn
 from pandas.tseries.offsets import BDay
 
+def aexpon(x, y, p=1, s=0.05, side='right', **kwargs):
+    if side=='right' and x < y: return 0
+    if side=='left' and x > y: return 0
+    if x < y: return 0
+    return exp(-abs(x-y)**p/s)
+
 class Data:
+
+    @classmethod
+    def jump(self, t):
+        W = [-0.1, 0.2, 0.5, 0.9]
+        P = [1.2, 1.6, 1.1, 1.2]
+        s = 0.05
+        B = [5, 2, 3, 1]
+        return 0.1+sum([b*aexpon(x=t, y=w, p=p, s=s) for b, w, p in zip(B, W, P)])
 
     @classmethod
     def sigt(self, t):
@@ -15,10 +29,12 @@ class Data:
         return sqrt(abs(x)+0.5)
 
     @classmethod
-    def gen_data_t(self, n, equi=True):
+    def gen_data_t(self, n, equi=True, mtype='sigt'):
+        sig = getattr(self, mtype, 'sigt')
+        print('vol fun = {}'.format(sig.__name__))
         T = sorted(rand(n)) if not equi else linspace(0, 1, n)
         dB = randn(n)*sqrt(1/n)
-        X = array([self.sigt(t)*db for t, db in zip(T, dB)])
+        X = array([sig(t)*db for t, db in zip(T, dB)])
         return T, X, dB
 
     @classmethod
@@ -76,3 +92,19 @@ class Data:
         print(f'Using {ticker} data from {start} to {end} ({n} days)')
         
         return T, X, Treal
+
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+
+    W = [-0.1, 0.2, 0.5, 0.9]
+    P = [1.2, 1.6, 1.1, 1.2]
+    s = 0.05
+    B = [5, 2, 3, 1]
+
+    dom = linspace(0, 1, 1000)
+    plt.plot(dom, [Data.LARK_jump(x) for x in dom])
+
+    for w, p, b in zip(W, P, B):
+        plt.plot(dom, [aexpon(x=t, y=w, p=p, s=s) for t in dom], color='black', alpha=0.4)
+    plt.show()
+

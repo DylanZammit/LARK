@@ -113,23 +113,23 @@ class LARK(Kernels):
             out = sum(self.pool.map(self._l, iters))
         return out
 
-    def qd(self, l0, l1, bold, kernel):
-        qd = norm.cdf((self.eps-bold)/self.b_proposal)
-        l = l1-l0
-        prior = self.vplus # vplus here?
-        prop_n = log(self.pb)
-        prop_d = log(self.pd+self.pu*qd)-log(self.J[kernel])
-        prop = prop_n-prop_d
-
-        return min([0, l+prior+prop])
 
     def qb(self, l0, l1, bnew, kernel):
         qd = norm.cdf((self.eps-bnew)/self.b_proposal)
         l = l1-l0
-        prior = -self.vplus
-
+        prior = log(self.J[kernel]+1)-self.vplus
         prop_n = log(self.pd+self.pu*qd)-log(self.J[kernel]+1)
         prop_d = log(self.pb)
+        prop = prop_n-prop_d
+
+        return min([0, l+prior+prop])
+
+    def qd(self, l0, l1, bold, kernel):
+        qd = norm.cdf((self.eps-bold)/self.b_proposal)
+        l = l1-l0
+        prior = self.vplus-log(self.J[kernel]) # vplus here?
+        prop_n = log(self.pb)
+        prop_d = log(self.pd+self.pu*qd)-log(self.J[kernel])
         prop = prop_n-prop_d
 
         return min([0, l+prior+prop])
@@ -156,7 +156,6 @@ class LARK(Kernels):
             J1[kernel] += 1
             w = rand()
             b = self.birth.rvs()
-
             # maybe perturb
             s = gamma.rvs(self.al, scale=1/self.bl) 
             p = gamma.rvs(self.ap, scale=1/self.bp)
@@ -167,7 +166,7 @@ class LARK(Kernels):
             P1[kernel].append(p)
             l1 = self.l(W=W1, B=B1, S=S1, P=P1)
 
-            A = self.qb(l0, l1, b, kernel)
+            q = self.qb(l0, l1, b, kernel)
 
         else:
             j = randint(0, self.J[kernel])
@@ -178,21 +177,21 @@ class LARK(Kernels):
                 
                 l1 = self.l(W=W1, B=B1, S=S1, P=P1)
                 bold = self.B[kernel][j]
-                A = self.qd(l0, l1, bold, kernel)
+                q = self.qd(l0, l1, bold, kernel)
 
             else: # update
                 bold = B1[kernel][j]
                 B1[kernel][j] = b
 
                 l1 = self.l(B=B1)
-                A = self.qu(l0, l1, bold, b, kernel)
+                q = self.qu(l0, l1, bold, b, kernel)
 
 
                 self.update_step = True
                 self.update_comp = j
 
         e = exponential(1)
-        if e+A > 0:
+        if e+q > 0:
             self.accepted[kernel] += 1
             self.J, self.W, self.B, self.S, self.P = deepcopy(J1), deepcopy(W1), deepcopy(B1), deepcopy(S1), deepcopy(P1)
         else:
@@ -204,18 +203,18 @@ class LARK(Kernels):
         sold = log(S1[kernel][self.update_comp])
         snew = sold + norm.rvs()*self.s_proposal
         S1[kernel][self.update_comp] = exp(snew)
-        print('s', exp(sold), exp(snew))
+        #print('s', exp(sold), exp(snew))
 
         l0 = self.l()
         l1 = self.l(S=S1)
-        A1 = l1-l0
-        A2 = gamma.logpdf(exp(sold), self.al, scale=1/self.bl)
-        A3 = -gamma.logpdf(exp(snew), self.al, scale=1/self.bl)
-        A4 = A1+A2+A3
-        A = min([0, A4])
+        l = l1-l0
+        prior_n = gamma.logpdf(exp(snew), self.al, scale=1/self.bl)
+        prior_d = gamma.logpdf(exp(sold), self.al, scale=1/self.bl)
+        prior = prior_n - prior_d
+        q = min([0, l+prior])
 
         e = exponential(1)
-        if e+A > 0: 
+        if e+q > 0: 
             self.S = deepcopy(S1)
             self.accepted['s'] += 1
 
@@ -224,18 +223,18 @@ class LARK(Kernels):
         pold = log(P1[kernel][self.update_comp])
         pnew = pold + norm.rvs()*self.p_proposal
         P1[kernel][self.update_comp] = exp(pnew)
-        print('p', exp(pold), exp(pnew))
+        #print('p', exp(pold), exp(pnew))
 
         l0 = self.l()
         l1 = self.l(P=P1)
-        A1 = l1-l0
-        A2 = gamma.logpdf(exp(pold), self.ap, scale=1/self.bp)
-        A3 = -gamma.logpdf(exp(pnew), self.ap, scale=1/self.bp)
-        A4 = A1+A2+A3
-        A = min([0, A4])
+        l = l1-l0
+        prior_n = gamma.logpdf(exp(pnew), self.ap, scale=1/self.bp)
+        prior_d = gamma.logpdf(exp(pold), self.ap, scale=1/self.bp)
+        prior = prior_n - prior_d
+        q = min([0, l+prior])
 
         e = exponential(1)
-        if e+A > 0: 
+        if e+q > 0: 
             self.P = P1
             self.accepted['p'] += 1
 
@@ -245,15 +244,15 @@ class LARK(Kernels):
         wnew = wold + norm.rvs()*self.w_proposal
         if not 0 < wnew < 1: return
 
-        W1[kernel][self.update_comp] = exp(wnew)
+        W1[kernel][self.update_comp] = wnew
 
         l0 = self.l()
         l1 = self.l(W=W1)
-        A1 = l1-l0
-        A = min([0, A1])
+        l = l1-l0
+        q = min([0, l])
 
         e = exponential(1)
-        if e+A > 0: 
+        if e+q > 0: 
             self.W = W1
             self.accepted['w'] += 1
 
@@ -289,7 +288,9 @@ class LARK(Kernels):
                     self.sample_s(k)
                     self.sample_w(k)
 
-            if i > bip: res.append([self.P, self.S, self.J, self.W, self.B])
+            if i >= bip: res.append([self.P, self.S, self.J, self.W, self.B])
+            #print(res[-1])
+            #print('-'*40)
 
             if i%100==0 and 0:
                 plt.vlines(self.W['expon'], [0]*self.J['expon'], self.B['expon'])
@@ -302,7 +303,7 @@ class LARK(Kernels):
         return res
 
 @timer
-def plot_out(posterior, lark, pp=False, real=False):
+def plot_out(posterior, lark, pp=False, mtype='real'):
     m = 1000
     nu = lark.nu
     N = len(posterior)
@@ -310,9 +311,8 @@ def plot_out(posterior, lark, pp=False, real=False):
 
     dom = linspace(0, 1, m)
 
-    if not real: 
-        plt.plot(dom, Data.sigt(dom), label='True volatility')
-        #plt.plot(dom, Data.sigt(dom)**2, label='True volatility')
+    if mtype!='real': 
+        plt.plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility')
     else:
         import pandas as pd
         rollstd = pd.Series(lark.X).ewm(10).std().bfill().values
@@ -324,7 +324,7 @@ def plot_out(posterior, lark, pp=False, real=False):
         P, S, J, W, B = post
         #ps.append(p)
         #ss.append(s)
-        if not real:
+        if mtype!='real':
             plot_post.append([sqrt(nu(x, P, S, W, B)) for x in dom])
         else:
             plot_post.append([sqrt(nu(x, P, S, W, B)*lark.dt) for x in dom])
@@ -360,16 +360,15 @@ def main():
     parser.add_argument('--eps', help='epsilon [0.5]', type=float, default=0.5)
     parser.add_argument('--p', type=str, default='0.4,0.4,0.2')
     parser.add_argument('--drift', type=str, default='zero')
-    parser.add_argument('--real', help='Use real data', action='store_true')
     parser.add_argument('--ticker', type=str, help='ticker to get data', default='AAPL')
     parser.add_argument('--noplot', help='Plot output', action='store_true')
     parser.add_argument('--nomulti', help='no multiprocessing', action='store_true')
     parser.add_argument('--cores', help='Number of cores to use', type=int, default=os.cpu_count())
-    #parser.add_argument('--no_mcmc_plot', help='don\'t show mcmc convergence pltos', action='store_true')
     parser.add_argument('--plot_samples', help='Plot output', action='store_true')
     parser.add_argument('--save', type=str, help='file name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
     parser.add_argument('--kernel', type=str, help='comma separated kernel functions', default='expon')
+    parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     args = parser.parse_args()
 
     nomulti = args.nomulti
@@ -379,10 +378,10 @@ def main():
     assert isclose(sum(p), 1)
 
     Treal = None
-    if args.real:
+    if args.gentype=='real':
         T, X, dB = Data.get_stock(n=args.n, ticker=args.ticker)
     else:
-        T, X, Treal = Data.gen_data_t(n=args.n)
+        T, X, Treal = Data.gen_data_t(n=args.n, mtype=args.gentype)
 
     lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=args.kernel.split(','), drift=args.drift)
     if not args.load:
@@ -396,7 +395,7 @@ def main():
         lark.res = res
 
     if args.save: lark.save(args.save)
-    if not args.noplot: plot_out(res, lark, args.plot_samples, real=args.real)
+    if not args.noplot: plot_out(res, lark, args.plot_samples, mtype=args.gentype)
 
 if __name__=='__main__':
     main()
