@@ -61,8 +61,6 @@ class LARK(Kernels):
             self.birth = Birth(eps=eps, alpha=alpha, beta=beta) # can model a
         else:
             self.birth = Gamma(eps=eps, nu=1)
-            #self.birth = Gamma(eps=eps, nu=25)
-            #self.birth = Gamma(eps=eps, nu=1/3)
         self.vplus = 10 # should be a param
         #self.vplus = 5 # should be a param
 
@@ -127,7 +125,7 @@ class LARK(Kernels):
     def qd(self, l0, l1, bold, kernel):
         qd = norm.cdf((self.eps-bold)/self.b_proposal)
         l = l1-l0
-        prior = self.vplus-log(self.J[kernel]) # vplus here?
+        prior = self.vplus-log(self.J[kernel])
         prop_n = log(self.pb)
         prop_d = log(self.pd+self.pu*qd)-log(self.J[kernel])
         prop = prop_n-prop_d
@@ -154,7 +152,7 @@ class LARK(Kernels):
 
         if u < self.pb or self.J[kernel] == 0: # birth
             J1[kernel] += 1
-            w = rand()
+            w = rand()*1.2-0.1 # can go outside of range
             b = self.birth.rvs()
             # maybe perturb
             s = gamma.rvs(self.al, scale=1/self.bl) 
@@ -196,14 +194,12 @@ class LARK(Kernels):
             self.J, self.W, self.B, self.S, self.P = deepcopy(J1), deepcopy(W1), deepcopy(B1), deepcopy(S1), deepcopy(P1)
         else:
             self.update_step = False
-            #print('NO')
 
     def sample_s(self, kernel):
         S1 = deepcopy(self.S)
         sold = log(S1[kernel][self.update_comp])
         snew = sold + norm.rvs()*self.s_proposal
         S1[kernel][self.update_comp] = exp(snew)
-        #print('s', exp(sold), exp(snew))
 
         l0 = self.l()
         l1 = self.l(S=S1)
@@ -223,7 +219,6 @@ class LARK(Kernels):
         pold = log(P1[kernel][self.update_comp])
         pnew = pold + norm.rvs()*self.p_proposal
         P1[kernel][self.update_comp] = exp(pnew)
-        #print('p', exp(pold), exp(pnew))
 
         l0 = self.l()
         l1 = self.l(P=P1)
@@ -242,7 +237,7 @@ class LARK(Kernels):
         W1 = deepcopy(self.W)
         wold = W1[kernel][self.update_comp]
         wnew = wold + norm.rvs()*self.w_proposal
-        if not 0 < wnew < 1: return
+        #if not 0 < wnew < 1: return
 
         W1[kernel][self.update_comp] = wnew
 
@@ -289,8 +284,6 @@ class LARK(Kernels):
                     self.sample_w(k)
 
             if i >= bip: res.append([self.P, self.S, self.J, self.W, self.B])
-            #print(res[-1])
-            #print('-'*40)
 
             if i%100==0 and 0:
                 plt.vlines(self.W['expon'], [0]*self.J['expon'], self.B['expon'])
@@ -301,6 +294,10 @@ class LARK(Kernels):
             accept_pct = v/N*100
             print(f'\nAcceptence [{k}] = {int(accept_pct)}%')
         return res
+
+def RMSE(x, y):
+    return sqrt(sum((x-y)**2)/len(x))
+
 
 @timer
 def plot_out(posterior, lark, pp=False, mtype='real'):
@@ -330,6 +327,12 @@ def plot_out(posterior, lark, pp=False, mtype='real'):
             plot_post.append([sqrt(nu(x, P, S, W, B)*lark.dt) for x in dom])
 
         if pp: plt.plot(dom, plot_post[-1], alpha=0.05, color='r')
+    #RMSE################
+    if mtype!='real':
+        A = array([getattr(Data, mtype)(x) for x in lark.X])
+        B = array([sqrt(nu(x, P, S, W, B)) for x in lark.X])
+        print('RMSE = {}'.format(RMSE(A, B)))
+    #RMSE################
     plot_post = matrix(plot_post)
 
     quantiles = []
@@ -343,12 +346,14 @@ def plot_out(posterior, lark, pp=False, mtype='real'):
     #plt.title(f'n={lark.n}, N={n}, kernel=$exp(-10|x-y|)$')
     plt.legend()
     plt.plot(lark.T, lark.X, alpha=0.4, label='Observations', color='black')
+    savefig('res.pdf')
 
-    plt.figure()
+    #plt.figure()
     for k in lark.kernels:
         plt.plot([J[k] for _, _, J, _, _ in posterior], label=f'J {k} trace')
 
     plt.legend()
+    savefig('Jtrace.pdf')
     plt.show()
 
 def main():

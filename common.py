@@ -3,6 +3,8 @@ from scipy.stats import poisson, gamma, norm, nbinom, chi2
 from scipy.special import exp1
 from scipy.stats import rv_continuous
 from numpy import *
+import matplotlib.pyplot as plt
+import os
 
 def expinv(x, d=1e-9):
     return chi2.ppf(1-x*d/2, d)/2
@@ -58,3 +60,8 @@ def timer(func):
 def progress(i, N, title=''):
     if int(i/N*100)!=int((i-1)/N*100):
         print(f'{title}: {int(i/N*100)}%', end='\r')
+
+def savefig(name):
+    fn = '/home/dylan/git/LARK/doc_img'
+    plt.savefig(os.path.join(fn, name), bbox_inches='tight', pad_inches=0.1, dpi=1000, format='pdf')
+    plt.figure()
