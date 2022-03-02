@@ -62,6 +62,7 @@ def progress(i, N, title=''):
         print(f'{title}: {int(i/N*100)}%', end='\r')
 
 def savefig(name):
-    fn = '/home/dylan/git/LARK/doc_img'
-    plt.savefig(os.path.join(fn, name), bbox_inches='tight', pad_inches=0.1, dpi=1000, format='pdf')
-    plt.figure()
+    plt.savefig(name, bbox_inches='tight', pad_inches=0.1, dpi=1000, format='pdf')
+
+def RMSE(x, y):
+    return sqrt(sum((x-y)**2)/len(x))

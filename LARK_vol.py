@@ -17,6 +17,8 @@ from common import *
 from kernels import Kernels
 from getdata import Data
 
+data = '/home/dylan/git/LARK/data'
+
 class LARK(Kernels):
 
     def __init__(self, T, X, p, eps, kernel, drift=None, **kwargs):
@@ -35,9 +37,10 @@ class LARK(Kernels):
         self.n = len(T)
         self.T, self.X = T, X
         self.b0 = 1e-8
-        self.b_proposal = 0.1 # depending on application
-        #self.b_proposal = 2
-        self.w_proposal = 0.1
+        #self.b_proposal = 0.1 # depending on application
+        self.b_proposal = 0.5
+        self.w_proposal = 0.05
+        #self.w_proposal = 0.1
         self.s_proposal = 0.1
         self.p_proposal = 0.1
 
@@ -62,7 +65,7 @@ class LARK(Kernels):
         else:
             self.birth = Gamma(eps=eps, nu=1)
         self.vplus = 10 # should be a param
-        #self.vplus = 5 # should be a param
+        #self.vplus = 30 # should be a param
 
     def init(self, kernel):
         J = poisson.rvs(self.vplus)
@@ -236,6 +239,7 @@ class LARK(Kernels):
     def sample_w(self, kernel):
         W1 = deepcopy(self.W)
         wold = W1[kernel][self.update_comp]
+        self.w_proposal = 0.001
         wnew = wold + norm.rvs()*self.w_proposal
         #if not 0 < wnew < 1: return
 
@@ -247,23 +251,32 @@ class LARK(Kernels):
         q = min([0, l])
 
         e = exponential(1)
+        #print(l0,l1,q, e)
+        #print(wold, wnew, end='')
+        #import pdb; pdb.set_trace()
         if e+q > 0: 
             self.W = W1
             self.accepted['w'] += 1
+            #print('...ACCEPTED')
+        else:
+            self.rejected['w'] += 1
+            #print('...REJECTED')
 
-    def save(self, fn):
+    def save(self, save):
         out = {
             'T': list(self.T),
             'X': list(self.X),
             'post': list(self.res)
             }
-        with open(fn, 'w') as f:
+        with open(os.path.join(save, 'res.json'), 'w') as f:
             json.dump(out, f)
 
     @timer
     def __call__(self, N=100, bip=0):
         self.accepted = {k: 0 for k in self.kernels}
+        self.rejected= {k: 0 for k in self.kernels}
         self.accepted.update({k: 0 for k in ['s','p', 'w']})
+        self.rejected.update({k: 0 for k in ['s','p', 'w']})
 
         res = []
 
@@ -295,12 +308,8 @@ class LARK(Kernels):
             print(f'\nAcceptence [{k}] = {int(accept_pct)}%')
         return res
 
-def RMSE(x, y):
-    return sqrt(sum((x-y)**2)/len(x))
-
-
 @timer
-def plot_out(posterior, lark, pp=False, mtype='real'):
+def plot_out(posterior, lark, pp=False, mtype='real', save=None):
     m = 1000
     nu = lark.nu
     N = len(posterior)
@@ -346,35 +355,44 @@ def plot_out(posterior, lark, pp=False, mtype='real'):
     #plt.title(f'n={lark.n}, N={n}, kernel=$exp(-10|x-y|)$')
     plt.legend()
     plt.plot(lark.T, lark.X, alpha=0.4, label='Observations', color='black')
-    savefig('res.pdf')
+    if save: savefig(os.path.join(save, 'res.pdf'))
+    plt.figure() # make neater
 
     #plt.figure()
     for k in lark.kernels:
         plt.plot([J[k] for _, _, J, _, _ in posterior], label=f'J {k} trace')
 
     plt.legend()
-    savefig('Jtrace.pdf')
+    if save: savefig(os.path.join(save, 'Jtrace.pdf'))
     plt.show()
 
 def main():
-    global nomulti, cores
+    global nomulti, cores, data
     parser = argparse.ArgumentParser(description='MCMC setup args.')
     parser.add_argument('--n', help='Sample size [100]', type=int, default=100)
     parser.add_argument('--N', help='MCMC iterations [1000]', type=int, default=1000)
     parser.add_argument('--bip', help='MCMC burn-in period [0]', type=int, default=0)
     parser.add_argument('--eps', help='epsilon [0.5]', type=float, default=0.5)
-    parser.add_argument('--p', type=str, default='0.4,0.4,0.2')
+    parser.add_argument('--p', type=str, help='pb,pd,pu', default='0.4,0.4,0.2')
     parser.add_argument('--drift', type=str, default='zero')
     parser.add_argument('--ticker', type=str, help='ticker to get data', default='AAPL')
     parser.add_argument('--noplot', help='Plot output', action='store_true')
     parser.add_argument('--nomulti', help='no multiprocessing', action='store_true')
     parser.add_argument('--cores', help='Number of cores to use', type=int, default=os.cpu_count())
     parser.add_argument('--plot_samples', help='Plot output', action='store_true')
-    parser.add_argument('--save', type=str, help='file name to save to', default=None)
+    parser.add_argument('--save', type=str, help='folder name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
     parser.add_argument('--kernel', type=str, help='comma separated kernel functions', default='expon')
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     args = parser.parse_args()
+
+    #raises exception if exists
+    save = None
+    if args.save:
+        save = os.path.join(data, args.save)
+        os.mkdir(save)
+    elif args.load:
+        load = os.path.join(data, args.load)
 
     nomulti = args.nomulti
     cores = args.cores
@@ -392,15 +410,15 @@ def main():
     if not args.load:
         res = lark(N=args.N, bip=args.bip)
     else:
-        with open(args.load) as fn:
+        with open(os.path.join(load, 'res.json')) as fn:
             data = json.load(fn)
         res = data['post']
         lark.T = data['T']
         lark.X = data['X']
         lark.res = res
 
-    if args.save: lark.save(args.save)
-    if not args.noplot: plot_out(res, lark, args.plot_samples, mtype=args.gentype)
+    if args.save: lark.save(save)
+    if not args.noplot: plot_out(res, lark, args.plot_samples, mtype=args.gentype, save=save)
 
 if __name__=='__main__':
     main()
