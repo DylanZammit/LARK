@@ -2,6 +2,13 @@ from numpy import *
 
 class Kernels:
 
+    def GP_expon(self, x, y, gamma=1/2):
+        return exp(-gamma*linalg.norm(x-y))
+
+    #def GP_expon(self, x, y, l=0.1):
+    #    return exp(-2*(sin(((x-y)/2))**2)/l**2)
+
+
     def expon(self, x, y, p=1, s=0.05, **kwargs):
         return exp(-abs(x-y)**p/2/s)
 

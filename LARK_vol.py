@@ -21,11 +21,12 @@ data = '/home/dylan/git/LARK/data'
 
 class LARK(Kernels):
 
-    def __init__(self, T, X, p, eps, kernel, drift=None, **kwargs):
+    def __init__(self, T, X, p, eps, kernel, drift=None, nomulti=False, cores=4, **kwargs):
         '''
         kwargs are passed on as kernel parameters
         '''
         if not nomulti: self.pool = Pool(cores)
+        self.nomulti=nomulti
         
         self.ap = 4
         self.bp = 2
@@ -107,7 +108,7 @@ class LARK(Kernels):
 
         out = 0
         self.largs = [P, S, W, B]
-        if nomulti:
+        if self.nomulti:
             out = sum([self._l(i) for i in range(self.n)])
         else:
             iters = arange(self.n)
@@ -364,7 +365,6 @@ def plot_out(posterior, lark, pp=False, mtype='real', save=None):
 
     plt.legend()
     if save: savefig(os.path.join(save, 'Jtrace.pdf'))
-    plt.show()
 
 def main():
     global nomulti, cores, data
@@ -419,6 +419,7 @@ def main():
 
     if args.save: lark.save(save)
     if not args.noplot: plot_out(res, lark, args.plot_samples, mtype=args.gentype, save=save)
+    plt.show()
 
 if __name__=='__main__':
     main()
