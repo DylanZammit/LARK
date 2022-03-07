@@ -2,35 +2,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 from getdata import Data
 
-if 0:
-    def K(x, y, r=1, n=20):
-        return (x*y+r)**n
-elif 0:
-    def K(x, y, sig=2, theta=0.3):
-        return sig**2/(2*theta)*(np.exp(-theta*np.abs(x-y))-np.exp(-theta*(x+y)))
-elif 1:
-    def K(x, y, gamma=1):
-        return np.exp(-gamma*np.linalg.norm(x-y))
-else:
-    def K(x, y, sig=1.5):
-        return sig**2*min([x,y])
-
-def K(x, y, l=0.1):
-    return np.exp(-2*(np.sin(((x-y)/2))**2)/l**2)
+def K(x, y, gamma=1):
+    return np.exp(-gamma*np.linalg.norm(x-y))
 
 def plot_gp(gp, Z, gentype='sigt'):
     T, X = gp.X, gp.Y
-    alpha = -1.27036 # these should depend on dt
+    alpha = -1.27036# -np.log(len(T))# these should depend on dt
     beta = np.pi**2/2
     g = lambda x: np.sqrt(np.exp(x*beta-alpha)*len(T))
     mean = g(gp.E(T))
     lower = g(np.diag(gp.band(T, False)))
     upper = g(np.diag(gp.band(T)))
     print('done')
-    plt.plot(T, Z)
-    plt.plot(T, [getattr(Data, gentype)(t) for t in T], label='True Volatility')
-    plt.plot(T, mean, label='LogExp', color='red')
-    plt.fill_between(T, lower, upper, alpha=0.2, color='red')
+    plt.title('GP Method')
+    plt.plot(T, Z, color='black', alpha=0.4)
+    plt.plot(T, [getattr(Data, gentype)(t) for t in T], label='True Volatility', color='orange')
+    plt.plot(T, mean, label='LogExp', color='blue')
+    plt.fill_between(T, lower, upper, alpha=0.2, color='blue')
     plt.legend()
 
 class Model:
@@ -98,7 +86,7 @@ if __name__ == '__main__':
     drift_gp = GP(X, Y, K)
     mu = drift_gp.E(X)
 
-    alpha = -1.27036284
+    alpha = -1.27036284-np.log(n)
     beta = np.pi**2/2
     Z = np.log((Y-mu)**2)/beta
     def g(x): return np.exp(x*beta-alpha)

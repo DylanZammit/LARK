@@ -318,8 +318,9 @@ def plot_out(posterior, lark, pp=False, mtype='real', save=None):
 
     dom = linspace(0, 1, m)
 
+    plt.title('LARK')
     if mtype!='real': 
-        plt.plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility')
+        plt.plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='orange')
     else:
         import pandas as pd
         rollstd = pd.Series(lark.X).ewm(10).std().bfill().values
@@ -341,7 +342,7 @@ def plot_out(posterior, lark, pp=False, mtype='real', save=None):
     if mtype!='real':
         A = array([getattr(Data, mtype)(x) for x in lark.X])
         B = array([sqrt(nu(x, P, S, W, B)) for x in lark.X])
-        print('RMSE = {}'.format(RMSE(A, B)))
+        print('LARK RMSE = {}'.format(RMSE(A, B)))
     #RMSE################
     plot_post = matrix(plot_post)
 
@@ -350,13 +351,14 @@ def plot_out(posterior, lark, pp=False, mtype='real', save=None):
     quantiles = matrix(quantiles)
 
     plot_post = array(plot_post.mean(0))[0]
-    plt.plot(dom, plot_post, label='Posterior Mean')
-    plt.fill_between(dom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.3, color='red')
+    plt.plot(dom, plot_post, label='Posterior Mean', color='blue')
+    plt.fill_between(dom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.2,
+                     color='blue')
 
     #plt.title(f'n={lark.n}, N={n}, kernel=$exp(-10|x-y|)$')
     plt.legend()
     plt.plot(lark.T, lark.X, alpha=0.4, label='Observations', color='black')
-    if save: savefig(os.path.join(save, 'res.pdf'))
+    if save: savefig('LARK.pdf')
     plt.figure() # make neater
 
     #plt.figure()
@@ -364,7 +366,7 @@ def plot_out(posterior, lark, pp=False, mtype='real', save=None):
         plt.plot([J[k] for _, _, J, _, _ in posterior], label=f'J {k} trace')
 
     plt.legend()
-    if save: savefig(os.path.join(save, 'Jtrace.pdf'))
+    if save: savefig('Jtrace.pdf')
 
 def main():
     global nomulti, cores, data

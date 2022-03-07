@@ -38,6 +38,7 @@ def main():
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
     parser.add_argument('--kernel', type=str, help='comma separated kernel functions', default='expon')
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
+    parser.add_argument('--gugum', help='Gugu bin width', type=int, default=100)
     args = parser.parse_args()
 
     #raises exception if exists
@@ -74,7 +75,8 @@ def main():
         lark.X = data['X']
         lark.res = res
         print('done')
-    if not args.noplot: plot_out(res, lark, args.plot_samples, mtype=args.gentype, save=save)
+    if not args.noplot: plot_out(res, lark, args.plot_samples, mtype=args.gentype, save=True)
+    savefig('LARK.pdf')
     plt.figure()
 
     print('Running GP method...', end='')
@@ -82,17 +84,20 @@ def main():
     K = Kernels().GP_expon
     alpha = -1.27036 # these should depend on dt
     beta = pi**2/2
-    #g = lambda x: exp(x*beta-alpha)
     Z = log(X**2)/beta
 
     gp = GP(T, Z, K, sig=1) # change sig
-    if not args.noplot: plot_gp(gp, X, args.gentype)
+    if not args.noplot: 
+        plot_gp(gp, X, args.gentype)
+        savefig('GP.pdf')
     plt.figure()
     print('done')
 
     print('Running GUGU method...', end='')
-    model = Gugu(X, m=5)
-    plot_gugu(model, T, args.gentype)
+    model = Gugu(X, m=args.gugum)
+    if not args.noplot:
+        plot_gugu(model, T, args.gentype)
+        savefig('gugu.pdf')
     print('done')
 
     plt.show()
