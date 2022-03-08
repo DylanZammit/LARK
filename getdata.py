@@ -89,6 +89,7 @@ class Data:
         T = linspace(0, 1, n)
         Treal = b.index
 
+        X[X==0]=1e-8
         print(f'Using {ticker} data from {start} to {end} ({n} days)')
         
         return T, X, Treal

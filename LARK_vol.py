@@ -28,11 +28,13 @@ class LARK(Kernels):
         if not nomulti: self.pool = Pool(cores)
         self.nomulti=nomulti
         
+        #smooth 4, 2
         self.ap = 4
-        self.bp = 2
+        self.bp = 4
 
+        # smooth 2, 200
         self.al = 2
-        self.bl = 200
+        self.bl = 20
 
         self.pb, self.pd, self.pu = p
         self.n = len(T)
@@ -324,7 +326,7 @@ def plot_out(posterior, lark, pp=False, mtype='real', save=None):
     else:
         import pandas as pd
         rollstd = pd.Series(lark.X).ewm(10).std().bfill().values
-        plt.plot(linspace(0, 1, lark.n), rollstd, label='rolling std')
+        #plt.plot(linspace(0, 1, lark.n), rollstd, label='rolling std')
 
     plot_post = []
     for i, post in enumerate(posterior):
@@ -358,7 +360,7 @@ def plot_out(posterior, lark, pp=False, mtype='real', save=None):
     #plt.title(f'n={lark.n}, N={n}, kernel=$exp(-10|x-y|)$')
     plt.legend()
     plt.plot(lark.T, lark.X, alpha=0.4, label='Observations', color='black')
-    if save: savefig('LARK.pdf')
+    if save: savefig(save, 'LARK.pdf')
     plt.figure() # make neater
 
     #plt.figure()
@@ -366,7 +368,7 @@ def plot_out(posterior, lark, pp=False, mtype='real', save=None):
         plt.plot([J[k] for _, _, J, _, _ in posterior], label=f'J {k} trace')
 
     plt.legend()
-    if save: savefig('Jtrace.pdf')
+    if save: savefig(save, 'Jtrace.pdf')
 
 def main():
     global nomulti, cores, data

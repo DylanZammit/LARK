@@ -69,11 +69,15 @@ class Gugu:
 def plot_gugu(model, T, mtype='sigt'):
     X = model.Y
     dom = np.linspace(0, 1, len(X))
+    n = len(X)
 
-    mean_nopa, low_nopa, up_nopa = model.s2_gugu()
-    plt.plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='orange')
-    plt.plot(T, mean_nopa,label='Histogram-Type', color='blue')
-    plt.fill_between(T, low_nopa, up_nopa, alpha=0.2, color='blue')
+    mean, low, up= model.s2_gugu()
+    mean, low, up = mean/np.sqrt(n), low/np.sqrt(n), up/np.sqrt(n)
+    if mtype !='real': 
+        trueval = [getattr(Data, mtype)(x) for x in dom]
+        plt.plot(dom, truevol, label='True volatility', color='orange')
+    plt.plot(T, mean,label='Histogram-Type', color='blue')
+    plt.fill_between(T, low, up, alpha=0.2, color='blue')
     #plt.plot(df.index, [model.s2_kernel(t) for t in dom], label='kernel_boxcar')
     #plt.plot(T, [model.s2_kernel_gauss(t) for t in dom], label='kernel_gauss')
     plt.plot(T, model.Y, color='black', alpha=0.4)

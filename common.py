@@ -6,6 +6,7 @@ from numpy import *
 import matplotlib.pyplot as plt
 import os
 
+data = '/home/dylan/git/LARK/data'
 def expinv(x, d=1e-9):
     return chi2.ppf(1-x*d/2, d)/2
 
@@ -61,8 +62,8 @@ def progress(i, N, title=''):
     if int(i/N*100)!=int((i-1)/N*100):
         print(f'{title}: {int(i/N*100)}%', end='\r')
 
-def savefig(name):
-    fn = os.path.join('plots', name)
+def savefig(save, name):
+    fn = os.path.join(data, save, 'plots', name)
     plt.savefig(fn, bbox_inches='tight', pad_inches=0.1, dpi=1000, format='pdf')
 
 def RMSE(x, y):

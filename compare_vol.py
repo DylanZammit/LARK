@@ -18,9 +18,11 @@ from GP_vol import GP, plot_gp
 from gugu_vol import Gugu, plot_gugu
 from kernels import Kernels
 
+data = '/home/dylan/git/LARK/data'
 
 def main():
     #global nomulti, cores, data
+    global data
     parser = argparse.ArgumentParser(description='MCMC setup args.')
     #LARK
     parser.add_argument('--n', help='Sample size [100]', type=int, default=100)
@@ -45,7 +47,11 @@ def main():
     save = None
     if args.save:
         save = os.path.join(data, args.save)
-        os.mkdir(save)
+        try:
+            os.mkdir(save)
+            os.mkdir(os.path.join(save, 'plots'))
+        except:
+            print('WARNING: {} probably already exists!!'.format(save))
     elif args.load:
         load = os.path.join(data, args.load)
 
@@ -56,13 +62,13 @@ def main():
     assert isclose(sum(p), 1)
 
     Treal = None
-    if not args.load:
-        if args.gentype=='real':
-            T, X, dB = Data.get_stock(n=args.n, ticker=args.ticker)
-        else:
-            T, X, Treal = Data.gen_data_t(n=args.n, mtype=args.gentype)
+    if args.gentype=='real':
+        T, X, dB = Data.get_stock(n=args.n, ticker=args.ticker)
+    else:
+        T, X, Treal = Data.gen_data_t(n=args.n, mtype=args.gentype)
 
-        lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=args.kernel.split(','), drift=args.drift, nomulti=nomulti, cores=cores)
+    lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=args.kernel.split(','), drift=args.drift, nomulti=nomulti, cores=cores)
+    if not args.load:
         print('Running LARK method...', end='')
         res = lark(N=args.N, bip=args.bip)
         print('done')
@@ -75,12 +81,14 @@ def main():
         lark.X = data['X']
         lark.res = res
         print('done')
-    if not args.noplot: plot_out(res, lark, args.plot_samples, mtype=args.gentype, save=True)
-    savefig('LARK.pdf')
+    if args.save: lark.save(save)
+    if not args.noplot: 
+        plot_out(res, lark, args.plot_samples, mtype=args.gentype, save=save)
     plt.figure()
 
-    print('Running GP method...', end='')
     T, X = lark.T, lark.X
+    print('Running GP method...', end='')
+    if isinstance(X, list): X = array(X)
     K = Kernels().GP_expon
     alpha = -1.27036 # these should depend on dt
     beta = pi**2/2
@@ -89,7 +97,7 @@ def main():
     gp = GP(T, Z, K, sig=1) # change sig
     if not args.noplot: 
         plot_gp(gp, X, args.gentype)
-        savefig('GP.pdf')
+        if args.save: savefig(args.save, 'GP.pdf')
     plt.figure()
     print('done')
 
@@ -97,7 +105,7 @@ def main():
     model = Gugu(X, m=args.gugum)
     if not args.noplot:
         plot_gugu(model, T, args.gentype)
-        savefig('gugu.pdf')
+        if args.save: savefig(args.save, 'gugu.pdf')
     print('done')
 
     plt.show()
