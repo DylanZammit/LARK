@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import yaml
 from multiprocessing import Pool
 import os
 import argparse
@@ -40,9 +41,26 @@ def main():
     parser.add_argument('--kernel', type=str, help='kernel function', default='expon')
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     parser.add_argument('--gugum', help='Gugu bin width', type=int, default=100)
+    parser.add_argument('--config', type=str, help='config with params based on gentype')
     args = parser.parse_args()
 
-    #raises exception if exists
+    if args.config:
+        with open(args.config) as f:
+            params = yaml.safe_load(f)[args.gentype]
+    else:
+        params = {}
+
+    kernel = params.get('kernel', args.kernel)
+    eps = params.get('eps', args.eps)
+    nu = params.get('nu', 1)
+    vplus = params.get('vplus', 10)
+    gammap = params.get('gammap', [1, 1])
+    gammal = params.get('gammal', [1, 1])
+    prop_bwsp = params.get('prop_bwsp', [1, 1, 1, 1])
+
+    nomulti = args.nomulti
+    cores = args.cores
+
     save = None
     if args.save:
         save = os.path.join(data, args.save)
@@ -54,9 +72,6 @@ def main():
     elif args.load:
         load = os.path.join(data, args.load)
 
-    nomulti = args.nomulti
-    cores = args.cores
-
     p = tuple([float(x) for x in args.p.split(',')])
     assert isclose(sum(p), 1)
 
@@ -66,7 +81,9 @@ def main():
     else:
         T, X, dB = Data.gen_data_t(n=args.n, mtype=args.gentype)
 
-    lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=args.kernel, drift=args.drift, nomulti=nomulti, cores=cores)
+    lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=kernel, drift=args.drift, 
+                nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, proposals=prop_bwsp,
+               nomulti=nomulti, cores=cores)
     if not args.load:
         print('Running LARK method...', end='')
         res = lark(N=args.N, bip=args.bip)
@@ -86,7 +103,7 @@ def main():
     plt.figure()
 
     T, X = lark.T, lark.X
-    if 0:
+    if 1:
         print('\nRunning GP method...', end='')
         if isinstance(X, list): X = array(X)
         K = Kernels().GP_expon
@@ -101,7 +118,7 @@ def main():
         plt.figure()
         print('done')
 
-    if 0:
+    if 1:
         print('Running GUGU method...', end='')
         model = Gugu(X, m=args.gugum)
         if not args.noplot:
