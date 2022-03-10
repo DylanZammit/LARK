@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from numpy import *
 from numpy.random import rand, randint, randn, exponential
 from copy import deepcopy
-from scipy.stats import poisson, gamma, norm, nbinom, chi2
+from scipy.stats import poisson, gamma, norm, nbinom, chi2, lognorm
 
 from common import *
 from kernels import Kernels
@@ -29,26 +29,38 @@ class LARK(Kernels):
         self.nomulti=nomulti
         
         #smooth 4, 2
-        self.ap = 4
-        self.bp = 4
+        #real 4, 4
+        self.ap = 3
+        self.bp = 3
 
         # smooth 2, 200
-        self.al = 2
-        self.bl = 20
+        # real 5, 100
+        self.al = 5
+        self.bl = 300
+        
+
+        self.ab = 5
+        self.bb = 500
+        self.b0_proposal = 0.001
 
         self.pb, self.pd, self.pu = p
         self.n = len(T)
         self.T, self.X = T, X
-        self.b0 = 1e-8
-        #self.b_proposal = 0.1 # depending on application
-        self.b_proposal = 0.5
+        #self.b0 = 1e-8
+        # smooth 0.5
+        # real 1
+        self.b_proposal = 0.005
+        #self.b_proposal = 0.05
+        #self.b_proposal = 0.5
         self.w_proposal = 0.05
-        #self.w_proposal = 0.1
-        self.s_proposal = 0.1
-        self.p_proposal = 0.1
+        # smooth 0.1, 0.1
+        self.s_proposal = 0.05
+        self.p_proposal = 0.05
 
-        self.kernels = kernel
+        kk = Kernels()
+        self.kernel = getattr(kk, kernel)
         self.dt = 1/self.n # assume domain is [0,1]
+        self.dt = 1
         if drift == 'linear':
             self.mu = {t: mean(X) for t in T}
         elif drift == 'zero':
@@ -59,37 +71,36 @@ class LARK(Kernels):
             self.mu = {t: m for t, m in zip(T, mu)}
         print(f'{drift=} ')
 
-        self.eps = eps
-        #alpha = 1
-        if 0:
-            alpha = 1
-            beta = 1
-            self.birth = Birth(eps=eps, alpha=alpha, beta=beta) # can model a
-        else:
-            self.birth = Gamma(eps=eps, nu=1)
-        self.vplus = 10 # should be a param
-        #self.vplus = 30 # should be a param
+        #smooth 1/100?
+        nu = 50
+        self.birth = Gamma(eps=eps, nu=nu)
+        self.vplus = 20 # should be a param
+        #self.vplus = 10 # should be a param
+        self.eps = eps/nu
+        print(f'eps={self.eps}')
 
-    def init(self, kernel):
+        self.nbirth = 0
+        self.nbirtha = 0
+
+    def init(self):
         J = poisson.rvs(self.vplus)
-        self.J[kernel] = J
-        self.W[kernel] = list(rand(J))
-        self.B[kernel] = list(self.birth.rvs(size=J))
-        self.S[kernel] = list(gamma.rvs(self.al, scale=1/self.bl, size=J))
-        self.P[kernel] = list(gamma.rvs(self.ap, scale=1/self.bp, size=J))
+        self.J = J
+        self.W = list(rand(J))
+        self.B = list(self.birth.rvs(size=J))
+        self.S = list(gamma.rvs(self.al, scale=1/self.bl, size=J))
+        self.p = gamma.rvs(self.ap, scale=1/self.bp)
+        self.b0 = 0.001# gamma.rvs(self.ab, scale=1/self.bb)
     
-    def nu(self, t, P, S, W, B):
-        out = self.b0
-        for kernel in self.kernels:
-            k = getattr(self, kernel)
-            out += sum([b*k(t, w, p=p, s=s) for w, b, p, s in zip(W[kernel], B[kernel], P[kernel], S[kernel])])
+    def nu(self, t, b0, p, S, W, B):
+        k = self.kernel
+        out = b0 + sum([b*k(t, y=w, p=p, s=s) for w, b, s in zip(W, B, S)])
         return out
 
     def _l(self, i):
         t = self.T[i]
         x = self.X[i]
-        P, S, W, B = self.largs
-        nui = self.nu(t, P, S, W, B)
+        b0, p, S, W, B = self.largs
+        nui = self.nu(t, b0, p, S, W, B)
         mean = self.mu[t]*self.dt
         std = sqrt(nui*self.dt)
         return norm.logpdf(x, loc=mean, scale=std)
@@ -102,168 +113,225 @@ class LARK(Kernels):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
-    def l(self, P=None, S=None, W=None, B=None):
-        P = P if P else self.P
-        S = S if S else self.S
-        W = W if W else self.W
-        B = B if B else self.B
+    def l(self, b0=None, p=None, S=None, W=None, B=None):
+        b0 = b0 if b0 is not None else self.b0
+        p = p if p is not None else self.p
+        S = S if S is not None else self.S
+        W = W if W is not None else self.W
+        B = B if B is not None else self.B
 
-        out = 0
-        self.largs = [P, S, W, B]
+        self.largs = [b0, p, S, W, B]
+        iters = arange(self.n)
         if self.nomulti:
-            out = sum([self._l(i) for i in range(self.n)])
+            out = sum([self._l(i) for i in iters])
         else:
-            iters = arange(self.n)
             out = sum(self.pool.map(self._l, iters))
         return out
 
-
-    def qb(self, l0, l1, bnew, kernel):
+    def qb(self, l0, l1, bnew):
         qd = norm.cdf((self.eps-bnew)/self.b_proposal)
         l = l1-l0
-        prior = log(self.J[kernel]+1)-self.vplus
-        prop_n = log(self.pd+self.pu*qd)-log(self.J[kernel]+1)
+        prior = log(self.vplus)-log(self.J+1)
+        prop_n = log(self.pd+self.pu*qd)-log(self.J+1)
         prop_d = log(self.pb)
         prop = prop_n-prop_d
 
         return min([0, l+prior+prop])
 
-    def qd(self, l0, l1, bold, kernel):
+    def qd(self, l0, l1, bold):
         qd = norm.cdf((self.eps-bold)/self.b_proposal)
         l = l1-l0
-        prior = self.vplus-log(self.J[kernel])
+        prior = log(self.J)-log(self.vplus)
         prop_n = log(self.pb)
-        prop_d = log(self.pd+self.pu*qd)-log(self.J[kernel])
+        prop_d = log(self.pd+self.pu*qd)-log(self.J)
         prop = prop_n-prop_d
 
         return min([0, l+prior+prop])
 
-    def qu(self, l0, l1, bold, bnew, kernel):
+    def qu(self, l0, l1, bold, bnew):
         l = l1-l0
         prior = self.birth.logpdf(bnew)-self.birth.logpdf(bold)
         prop = 0
 
         return min([0, l+prior+prop])
 
-    def rj_mcmc(self, kernel):
+    def rj_mcmc(self):
         J1 = deepcopy(self.J)
         W1 = deepcopy(self.W)
         B1 = deepcopy(self.B)
         S1 = deepcopy(self.S)
-        P1 = deepcopy(self.P)
         u = rand()
 
         l0 = self.l()
-        self.update_step = False
+        birth, death, update = False, False, False
 
-        if u < self.pb or self.J[kernel] == 0: # birth
-            J1[kernel] += 1
-            w = rand()*1.2-0.1 # can go outside of range
+        if u < self.pb or self.J == 0: # birth
+            birth = True
+            J1 += 1
+            w = rand()*1.1-0.1
             b = self.birth.rvs()
-            # maybe perturb
             s = gamma.rvs(self.al, scale=1/self.bl) 
-            p = gamma.rvs(self.ap, scale=1/self.bp)
 
-            W1[kernel].append(w)
-            B1[kernel].append(b)
-            S1[kernel].append(s)
-            P1[kernel].append(p)
-            l1 = self.l(W=W1, B=B1, S=S1, P=P1)
+            W1.append(w)
+            B1.append(b)
+            S1.append(s)
+            l1 = self.l(W=W1, B=B1, S=S1)
 
-            q = self.qb(l0, l1, b, kernel)
+            q = self.qb(l0, l1, b)
 
         else:
-            j = randint(0, self.J[kernel])
-            b = norm.rvs()*self.b_proposal+self.B[kernel][j]
+            j = randint(0, self.J)
+            b = norm.rvs()*self.b_proposal+self.B[j]
             if b < self.eps or u < self.pb + self.pd: # death
-                J1[kernel] -= 1
-                del W1[kernel][j], B1[kernel][j], S1[kernel][j], P1[kernel][j]
+                #self.nbirth+=1
+                death = True
+                J1 -= 1
+                del W1[j], B1[j], S1[j]
                 
-                l1 = self.l(W=W1, B=B1, S=S1, P=P1)
-                bold = self.B[kernel][j]
-                q = self.qd(l0, l1, bold, kernel)
+                l1 = self.l(W=W1, B=B1, S=S1)
+                bold = self.B[j]
+                q = self.qd(l0, l1, bold)
 
             else: # update
-                bold = B1[kernel][j]
-                B1[kernel][j] = b
+                update = True
+                bold = B1[j]
+                B1[j] = b
 
                 l1 = self.l(B=B1)
-                q = self.qu(l0, l1, bold, b, kernel)
+                q = self.qu(l0, l1, bold, b)
 
-
-                self.update_step = True
-                self.update_comp = j
+        self.update = update
+        if update: self.update_comp = j
 
         e = exponential(1)
         if e+q > 0:
-            self.accepted[kernel] += 1
-            self.J, self.W, self.B, self.S, self.P = deepcopy(J1), deepcopy(W1), deepcopy(B1), deepcopy(S1), deepcopy(P1)
+            accepted = True
+            self.accepted['K'] += 1
+            self.J, self.W, self.B, self.S = deepcopy(J1), deepcopy(W1), deepcopy(B1), deepcopy(S1)
+            if 0 and death:
+                self.nbirtha+=1
+                print(f'Birth accept = {self.nbirtha}/{self.nbirth}={int(self.nbirtha/self.nbirth*100):.2f}')
         else:
-            self.update_step = False
+            accepted = False
 
-    def sample_s(self, kernel):
+        if 0: print('B, D, U={}, {}, {}....accepted={}'.format(birth, death, update, accepted))
+        ######FOR DEBUG########
+        #if (self.iter > 200 ) and 1: 
+        #if 0 and (self.iter % 30 == 0): 
+        #if self.iter > 100 and death and not accepted:
+        if 0:
+            def myplot():
+                dom = linspace(0, 1, 100)
+                plt.title(f'B, D, U = {birth}, {death}, {update}')
+                plt.plot(self.T, self.X, color='black', alpha=0.3)
+                plt.plot(dom, [sqrt(self.nu(t, self.b0, self.p, self.S, self.W, self.B)) for t in dom], label='OLD', color='blue')
+                plt.plot(dom, [sqrt(self.nu(t, self.b0, self.p, S1, W1, B1)) for t in dom], label='NEW', color='orange')
+                if 0:
+                    k = self.kernel
+                    for b, s, w in zip(self.B, self.S, self.W):
+                        Y = [b*k(x, y=w, p=self.p, s=s) for x in dom]
+                        plt.plot(dom, Y, alpha=0.5, color='blue')
+
+
+                plt.legend()
+                plt.show(block=False)
+                if 0:
+                    if death: 
+                        print(f'death index={j}')
+                    elif update:
+                        print(f'update index={j}')
+                    else:
+                        print(f'new birth b={b}')
+                        print(f'new loc={w}')
+                print(f'l0={l0}, l1={l1}')
+                import pdb; pdb.set_trace()
+            myplot()
+        ######FOR DEBUG########
+
+
+    def sample_s(self):
         S1 = deepcopy(self.S)
-        sold = log(S1[kernel][self.update_comp])
+        sold = S1[self.update_comp]
         snew = sold + norm.rvs()*self.s_proposal
-        S1[kernel][self.update_comp] = exp(snew)
+        S1[self.update_comp] = snew
 
         l0 = self.l()
         l1 = self.l(S=S1)
         l = l1-l0
-        prior_n = gamma.logpdf(exp(snew), self.al, scale=1/self.bl)
-        prior_d = gamma.logpdf(exp(sold), self.al, scale=1/self.bl)
+        prior_n = gamma.logpdf(snew, self.al, scale=1/self.bl)
+        prior_d = gamma.logpdf(sold, self.al, scale=1/self.bl)
         prior = prior_n - prior_d
-        q = min([0, l+prior])
+        prop = 0
+        q = min([0, l+prior+prop])
 
+        #print('sold={}, snew={}'.format(sold, snew))
         e = exponential(1)
         if e+q > 0: 
             self.S = deepcopy(S1)
             self.accepted['s'] += 1
 
-    def sample_p(self, kernel):
-        P1 = deepcopy(self.P)
-        pold = log(P1[kernel][self.update_comp])
-        pnew = pold + norm.rvs()*self.p_proposal
-        P1[kernel][self.update_comp] = exp(pnew)
+    def sample_b0(self):
+        bold = self.b0
+        bnew = bold + norm.rvs()*self.b0_proposal
+        #pnew = exp(log(pold) + norm.rvs()*self.p_proposal)
 
+        if bnew < 0: return
         l0 = self.l()
-        l1 = self.l(P=P1)
-        l = l1-l0
-        prior_n = gamma.logpdf(exp(pnew), self.ap, scale=1/self.bp)
-        prior_d = gamma.logpdf(exp(pold), self.ap, scale=1/self.bp)
-        prior = prior_n - prior_d
-        q = min([0, l+prior])
+        l1 = self.l(b0=bnew)
+        if isnan(l1): l1 = -inf # this instead?
 
+        l = l1-l0
+        prior_n = gamma.logpdf(bnew, self.ab, scale=1/self.bb)
+        prior_d = gamma.logpdf(bold, self.ab, scale=1/self.bb)
+        prior = prior_n - prior_d
+        prop = 0
+        q = min([0, l+prior+prop])
+
+        #print('bold={}, bnew={}'.format(bold, bnew))
         e = exponential(1)
         if e+q > 0: 
-            self.P = P1
+            if bnew < 0: import pdb; pdb.set_trace()
+            self.b0 = bnew
+            self.accepted['b0'] += 1
+
+    def sample_p(self):
+        pold = self.p
+        pnew = pold + norm.rvs()*self.p_proposal
+        #pnew = exp(log(pold) + norm.rvs()*self.p_proposal)
+
+        l0 = self.l()
+        l1 = self.l(p=pnew)
+        l = l1-l0
+        prior_n = gamma.logpdf(pnew, self.ap, scale=1/self.bp)
+        prior_d = gamma.logpdf(pold, self.ap, scale=1/self.bp)
+        prior = prior_n - prior_d
+        prop = 0
+        q = min([0, l+prior+prop])
+
+        #print('pold={}, pnew={}'.format(pold, pnew))
+        e = exponential(1)
+        if e+q > 0: 
+            self.p = pnew
             self.accepted['p'] += 1
 
-    def sample_w(self, kernel):
+    def sample_w(self):
         W1 = deepcopy(self.W)
-        wold = W1[kernel][self.update_comp]
-        self.w_proposal = 0.001
+        wold = W1[self.update_comp]
         wnew = wold + norm.rvs()*self.w_proposal
         #if not 0 < wnew < 1: return
 
-        W1[kernel][self.update_comp] = wnew
+        W1[self.update_comp] = wnew
 
         l0 = self.l()
         l1 = self.l(W=W1)
         l = l1-l0
         q = min([0, l])
 
+        #print('wold={}, wnew={}'.format(wold, wnew))
         e = exponential(1)
-        #print(l0,l1,q, e)
-        #print(wold, wnew, end='')
-        #import pdb; pdb.set_trace()
         if e+q > 0: 
             self.W = W1
             self.accepted['w'] += 1
-            #print('...ACCEPTED')
-        else:
-            self.rejected['w'] += 1
-            #print('...REJECTED')
 
     def save(self, save):
         out = {
@@ -276,43 +344,45 @@ class LARK(Kernels):
 
     @timer
     def __call__(self, N=100, bip=0):
-        self.accepted = {k: 0 for k in self.kernels}
-        self.rejected= {k: 0 for k in self.kernels}
-        self.accepted.update({k: 0 for k in ['s','p', 'w']})
-        self.rejected.update({k: 0 for k in ['s','p', 'w']})
+        assert N > bip
+        self.accepted = {k: 0 for k in ['s','p', 'w', 'K', 'b0']}
+        N_update = 1e-8
 
         res = []
 
-        self.P, self.S, self.J, self.W, self.B = {}, {}, {}, {}, {}
+        self.S, self.J, self.W, self.B = {}, {}, {}, {}
 
-        for k in self.kernels: self.init(k)
+        self.init()
 
         for i in range(N):
             self.iter = i
             progress(i, N, 'LARK')
 
-            #loop through chosen kernels
-            for k in self.kernels:
-                self.rj_mcmc(k)
-                if self.update_step:
-                    self.sample_p(k)
-                    self.sample_s(k)
-                    self.sample_w(k)
+            self.rj_mcmc()
+            if self.update:
+                N_update += 1
+                self.sample_s()
+                self.sample_w()
+            self.sample_p()
+            self.sample_b0()
 
-            if i >= bip: res.append([self.P, self.S, self.J, self.W, self.B])
-
-            if i%100==0 and 0:
-                plt.vlines(self.W['expon'], [0]*self.J['expon'], self.B['expon'])
-                plt.show()
+            if i >= bip: res.append([self.b0, self.p, self.S, self.J, self.W, self.B])
 
         self.res = res
-        for k, v in self.accepted.items():
-            accept_pct = v/N*100
-            print(f'\nAcceptence [{k}] = {int(accept_pct)}%')
+        accept_pct = self.accepted['s']/N_update*100
+        print(f'\nAcceptence [s] = {int(accept_pct)}%')
+        accept_pct = self.accepted['w']/N_update*100
+        print(f'\nAcceptence [w] = {int(accept_pct)}%')
+        accept_pct = self.accepted['p']/N*100
+        print(f'\nAcceptence [p] = {int(accept_pct)}%')
+        accept_pct = self.accepted['b0']/N*100
+        print(f'\nAcceptence [b0] = {int(accept_pct)}%')
+        accept_pct = self.accepted['K']/N*100
+        print(f'\nAcceptence [K] = {int(accept_pct)}%')
         return res
 
 @timer
-def plot_out(posterior, lark, pp=False, mtype='real', save=None):
+def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
     m = 1000
     nu = lark.nu
     N = len(posterior)
@@ -326,24 +396,18 @@ def plot_out(posterior, lark, pp=False, mtype='real', save=None):
     else:
         import pandas as pd
         rollstd = pd.Series(lark.X).ewm(10).std().bfill().values
-        #plt.plot(linspace(0, 1, lark.n), rollstd, label='rolling std')
+        plt.plot(linspace(0, 1, lark.n), rollstd, label='rolling std')
 
     plot_post = []
     for i, post in enumerate(posterior):
         progress(i, N, 'Plotting')
-        P, S, J, W, B = post
-        #ps.append(p)
-        #ss.append(s)
-        if mtype!='real':
-            plot_post.append([sqrt(nu(x, P, S, W, B)) for x in dom])
-        else:
-            plot_post.append([sqrt(nu(x, P, S, W, B)*lark.dt) for x in dom])
+        b0, p, S, J, W, B = post
+        plot_post.append([sqrt(nu(x, b0, p, S, W, B)*lark.dt) for x in dom])
 
-        if pp: plt.plot(dom, plot_post[-1], alpha=0.05, color='r')
     #RMSE################
     if mtype!='real':
         A = array([getattr(Data, mtype)(x) for x in lark.X])
-        B = array([sqrt(nu(x, P, S, W, B)) for x in lark.X])
+        B = array([sqrt(nu(x, b0, p, S, W, B)) for x in lark.X]) # p S W B only last!!
         print('LARK RMSE = {}'.format(RMSE(A, B)))
     #RMSE################
     plot_post = matrix(plot_post)
@@ -353,21 +417,38 @@ def plot_out(posterior, lark, pp=False, mtype='real', save=None):
     quantiles = matrix(quantiles)
 
     plot_post = array(plot_post.mean(0))[0]
-    plt.plot(dom, plot_post, label='Posterior Mean', color='blue')
-    plt.fill_between(dom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.2,
+    Tdom = Treal if Treal is not None else dom
+    Tdom = dom
+
+    plt.plot(Tdom, plot_post, label='Posterior Mean', color='blue')
+    plt.fill_between(Tdom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.2,
                      color='blue')
 
-    #plt.title(f'n={lark.n}, N={n}, kernel=$exp(-10|x-y|)$')
     plt.legend()
-    plt.plot(lark.T, lark.X, alpha=0.4, label='Observations', color='black')
+    T = Treal if Treal is not None else lark.T
+    T = lark.T
+    plt.plot(T, lark.X, alpha=0.4, label='Observations', color='black')
     if save: savefig(save, 'LARK.pdf')
     plt.figure() # make neater
 
-    #plt.figure()
-    for k in lark.kernels:
-        plt.plot([J[k] for _, _, J, _, _ in posterior], label=f'J {k} trace')
-
+    ##################
+    plt.plot([J for _, _, _, J, _, _ in posterior], label='J trace')
+    plt.figure()
+    ddd = linspace(0, 3, 1000)
+    plt.title('p')
+    plt.hist([p for _, p, _, _, _, _ in posterior], label=f'posterior', density=True, alpha=0.4, bins=30)
+    plt.plot(ddd, gamma.pdf(ddd, lark.ap, scale=1/lark.bp), label='prior')
     plt.legend()
+
+    ##################
+    plt.figure()
+    ddd = linspace(0, 0.1, 1000)
+    plt.title('b0')
+    plt.hist([b0 for b0, _, _, _, _, _ in posterior], label=f'posterior', density=True, alpha=0.4, bins=30)
+    plt.plot(ddd, gamma.pdf(ddd, lark.ab, scale=1/lark.bb), label='prior')
+    plt.legend()
+    ##################
+
     if save: savefig(save, 'Jtrace.pdf')
 
 def main():
@@ -383,10 +464,9 @@ def main():
     parser.add_argument('--noplot', help='Plot output', action='store_true')
     parser.add_argument('--nomulti', help='no multiprocessing', action='store_true')
     parser.add_argument('--cores', help='Number of cores to use', type=int, default=os.cpu_count())
-    parser.add_argument('--plot_samples', help='Plot output', action='store_true')
     parser.add_argument('--save', type=str, help='folder name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
-    parser.add_argument('--kernel', type=str, help='comma separated kernel functions', default='expon')
+    parser.add_argument('--kernel', type=str, help='kernel function', default='expon')
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     args = parser.parse_args()
 
@@ -410,7 +490,7 @@ def main():
     else:
         T, X, Treal = Data.gen_data_t(n=args.n, mtype=args.gentype)
 
-    lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=args.kernel.split(','), drift=args.drift)
+    lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=args.kernel, drift=args.drift)
     if not args.load:
         res = lark(N=args.N, bip=args.bip)
     else:
@@ -422,7 +502,7 @@ def main():
         lark.res = res
 
     if args.save: lark.save(save)
-    if not args.noplot: plot_out(res, lark, args.plot_samples, mtype=args.gentype, save=save)
+    if not args.noplot: plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal)
     plt.show()
 
 if __name__=='__main__':

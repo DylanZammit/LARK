@@ -35,10 +35,9 @@ def main():
     parser.add_argument('--noplot', help='Plot output', action='store_true')
     parser.add_argument('--nomulti', help='no multiprocessing', action='store_true')
     parser.add_argument('--cores', help='Number of cores to use', type=int, default=os.cpu_count())
-    parser.add_argument('--plot_samples', help='Plot output', action='store_true')
     parser.add_argument('--save', type=str, help='folder name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
-    parser.add_argument('--kernel', type=str, help='comma separated kernel functions', default='expon')
+    parser.add_argument('--kernel', type=str, help='kernel function', default='expon')
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     parser.add_argument('--gugum', help='Gugu bin width', type=int, default=100)
     args = parser.parse_args()
@@ -63,11 +62,11 @@ def main():
 
     Treal = None
     if args.gentype=='real':
-        T, X, dB = Data.get_stock(n=args.n, ticker=args.ticker)
+        T, X, Treal = Data.get_stock(n=args.n, ticker=args.ticker)
     else:
-        T, X, Treal = Data.gen_data_t(n=args.n, mtype=args.gentype)
+        T, X, dB = Data.gen_data_t(n=args.n, mtype=args.gentype)
 
-    lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=args.kernel.split(','), drift=args.drift, nomulti=nomulti, cores=cores)
+    lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=args.kernel, drift=args.drift, nomulti=nomulti, cores=cores)
     if not args.load:
         print('Running LARK method...', end='')
         res = lark(N=args.N, bip=args.bip)
@@ -83,30 +82,32 @@ def main():
         print('done')
     if args.save: lark.save(save)
     if not args.noplot: 
-        plot_out(res, lark, args.plot_samples, mtype=args.gentype, save=save)
+        plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal)
     plt.figure()
 
     T, X = lark.T, lark.X
-    print('Running GP method...', end='')
-    if isinstance(X, list): X = array(X)
-    K = Kernels().GP_expon
-    alpha = -1.27036 # these should depend on dt
-    beta = pi**2/2
-    Z = log(X**2)/beta
+    if 0:
+        print('\nRunning GP method...', end='')
+        if isinstance(X, list): X = array(X)
+        K = Kernels().GP_expon
+        alpha = -1.27036 # these should depend on dt
+        beta = pi**2/2
+        Z = log(X**2)/beta
 
-    gp = GP(T, Z, K, sig=1) # change sig
-    if not args.noplot: 
-        plot_gp(gp, X, args.gentype)
-        if args.save: savefig(args.save, 'GP.pdf')
-    plt.figure()
-    print('done')
+        gp = GP(T, Z, K, sig=1) # change sig
+        if not args.noplot: 
+            plot_gp(gp, X, args.gentype)
+            if args.save: savefig(args.save, 'GP.pdf')
+        plt.figure()
+        print('done')
 
-    print('Running GUGU method...', end='')
-    model = Gugu(X, m=args.gugum)
-    if not args.noplot:
-        plot_gugu(model, T, args.gentype)
-        if args.save: savefig(args.save, 'gugu.pdf')
-    print('done')
+    if 0:
+        print('Running GUGU method...', end='')
+        model = Gugu(X, m=args.gugum)
+        if not args.noplot:
+            plot_gugu(model, T, args.gentype)
+            if args.save: savefig(args.save, 'gugu.pdf')
+        print('done')
 
     plt.show()
 

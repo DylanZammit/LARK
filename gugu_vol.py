@@ -7,6 +7,7 @@ from scipy.optimize import fsolve
 import pandas as pd
 import yfinance as yf
 from getdata import Data
+from common import RMSE
 
 def gaus_ker(x):
     return 1/np.sqrt(2*np.pi)*np.exp(-x**2/2)
@@ -66,22 +67,28 @@ class Gugu:
 
         return np.sqrt(mean), np.sqrt(lower_95), np.sqrt(upper_95)
 
-def plot_gugu(model, T, mtype='sigt'):
+def plot_gugu(model, T, gentype='sigt'):
     X = model.Y
     dom = np.linspace(0, 1, len(X))
     n = len(X)
 
     mean, low, up= model.s2_gugu()
     mean, low, up = mean/np.sqrt(n), low/np.sqrt(n), up/np.sqrt(n)
-    if mtype !='real': 
-        trueval = [getattr(Data, mtype)(x) for x in dom]
+    if gentype !='real': 
+        truevol = [getattr(Data, gentype)(x) for x in dom]
         plt.plot(dom, truevol, label='True volatility', color='orange')
-    plt.plot(T, mean,label='Histogram-Type', color='blue')
+    plt.plot(T, mean, label='Histogram-Type', color='blue')
     plt.fill_between(T, low, up, alpha=0.2, color='blue')
     #plt.plot(df.index, [model.s2_kernel(t) for t in dom], label='kernel_boxcar')
     #plt.plot(T, [model.s2_kernel_gauss(t) for t in dom], label='kernel_gauss')
     plt.plot(T, model.Y, color='black', alpha=0.4)
     plt.legend()
+    #RMSE################
+    if gentype!='real':
+        A = np.array([getattr(Data, gentype)(x) for x in X])
+        B = mean
+        print('\nGUGU RMSE = {}'.format(RMSE(A, B)))
+    #RMSE################
 
 def main():
     a = yf.Ticker("AAPL")

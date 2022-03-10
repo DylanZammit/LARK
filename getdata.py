@@ -33,7 +33,7 @@ class Data:
         sig = getattr(self, mtype, 'sigt')
         print('vol fun = {}'.format(sig.__name__))
         T = sorted(rand(n)) if not equi else linspace(0, 1, n)
-        dB = randn(n)*sqrt(1/n)
+        dB = randn(n)#*sqrt(1/n)
         X = array([sig(t)*db for t, db in zip(T, dB)])
         return T, X, dB
 

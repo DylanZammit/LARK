@@ -1,18 +1,22 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from getdata import Data
+from common import RMSE
 
 def K(x, y, gamma=1):
     return np.exp(-gamma*np.linalg.norm(x-y))
 
 def plot_gp(gp, Z, gentype='sigt'):
     T, X = gp.X, gp.Y
+    n = len(T)
     alpha = -1.27036# -np.log(len(T))# these should depend on dt
     beta = np.pi**2/2
     g = lambda x: np.sqrt(np.exp(x*beta-alpha)*len(T))
     mean = g(gp.E(T))
     lower = g(np.diag(gp.band(T, False)))
     upper = g(np.diag(gp.band(T)))
+
+    mean, lower, upper = mean/np.sqrt(n), lower/np.sqrt(n), upper/np.sqrt(n)
     print('done')
     plt.title('GP Method')
     plt.plot(T, Z, color='black', alpha=0.4)
@@ -21,6 +25,12 @@ def plot_gp(gp, Z, gentype='sigt'):
     plt.plot(T, mean, label='LogExp', color='blue')
     plt.fill_between(T, lower, upper, alpha=0.2, color='blue')
     plt.legend()
+    #RMSE################
+    if gentype!='real':
+        A = np.array([getattr(Data, gentype)(x) for x in T])
+        B = g(gp.E(T))/np.sqrt(n)
+        print('\nGP RMSE = {}'.format(RMSE(A, B)))
+    #RMSE################
 
 class Model:
 
