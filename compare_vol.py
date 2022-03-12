@@ -69,7 +69,7 @@ def main():
             os.mkdir(os.path.join(save, 'plots'))
         except:
             print('WARNING: {} probably already exists!!'.format(save))
-    elif args.load:
+    if args.load:
         load = os.path.join(data, args.load)
 
     p = tuple([float(x) for x in args.p.split(',')])
@@ -113,7 +113,7 @@ def main():
 
         gp = GP(T, Z, K, sig=1) # change sig
         if not args.noplot: 
-            plot_gp(gp, X, args.gentype)
+            plot_gp(gp, X, args.gentype, Treal=Treal)
             if args.save: savefig(args.save, 'GP.pdf')
         plt.figure()
         print('done')
@@ -122,7 +122,7 @@ def main():
         print('Running GUGU method...', end='')
         model = Gugu(X, m=args.gugum)
         if not args.noplot:
-            plot_gugu(model, T, args.gentype)
+            plot_gugu(model, T, args.gentype, Treal=Treal)
             if args.save: savefig(args.save, 'gugu.pdf')
         print('done')
 

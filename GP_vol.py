@@ -6,7 +6,7 @@ from common import RMSE
 def K(x, y, gamma=1):
     return np.exp(-gamma*np.linalg.norm(x-y))
 
-def plot_gp(gp, Z, gentype='sigt'):
+def plot_gp(gp, Z, gentype='sigt', Treal=None):
     T, X = gp.X, gp.Y
     n = len(T)
     alpha = -1.27036# -np.log(len(T))# these should depend on dt
@@ -17,13 +17,18 @@ def plot_gp(gp, Z, gentype='sigt'):
     upper = g(np.diag(gp.band(T)))
 
     mean, lower, upper = mean/np.sqrt(n), lower/np.sqrt(n), upper/np.sqrt(n)
+    if Treal is not None:
+        Tdom = Treal
+        plt.xticks(rotation=45)
+    else:
+        Tdom = T
     print('done')
     plt.title('GP Method')
-    plt.plot(T, Z, color='black', alpha=0.4)
+    plt.plot(Tdom, Z, color='black', alpha=0.4)
     if gentype != 'real': 
         plt.plot(T, [getattr(Data, gentype)(t) for t in T], label='True Volatility', color='orange')
-    plt.plot(T, mean, label='LogExp', color='blue')
-    plt.fill_between(T, lower, upper, alpha=0.2, color='blue')
+    plt.plot(Tdom, mean, label='GP posterior', color='blue')
+    plt.fill_between(Tdom, lower, upper, alpha=0.2, color='blue')
     plt.legend()
     #RMSE################
     if gentype!='real':
@@ -84,7 +89,7 @@ class GP:
 
     def band(self, D, upper=True):
         sg = 1 if upper else -1
-        return sg*self.V(D)+self.E(D)
+        return 1.96*sg*np.sqrt(self.V(D))+self.E(D)
 
 if __name__ == '__main__':
     n = 1000

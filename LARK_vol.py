@@ -365,12 +365,15 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
 
     #RMSE################
     if mtype!='real':
-        A = array([getattr(Data, mtype)(x) for x in lark.X])
+        A = array([getattr(Data, mtype)(x) for x in lark.T])
         B = plot_post
         print('LARK RMSE = {}'.format(RMSE(A, B)))
     #RMSE################
-    Tdom = Treal if Treal is not None else dom
-    Tdom = dom
+    if Treal is not None:
+        Tdom = Treal
+        plt.xticks(rotation=45)
+    else:
+        Tdom = dom
 
     plt.plot(Tdom, plot_post, label='Posterior Mean', color='blue')
     plt.fill_between(Tdom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.2,
@@ -384,14 +387,18 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
     plt.figure() # make neater
 
     ##################
-    plt.plot([J for _, _, J, _, _ in posterior], label='J trace')
+    Js = [J for _, _, J, _, _ in posterior]
+    print('J mean = {}'.format(mean(Js)))
+    plt.plot(Js, label='J trace', linewidth=0.25)
     if save: savefig(save, 'Jtrace.pdf')
     ##################
 
     plt.figure()
     ddd = linspace(0, 3, 1000)
     plt.title('p')
-    plt.hist([p for p, _, _, _, _ in posterior], label=f'posterior', density=True, alpha=0.4, bins=30)
+    ps = [p for p, _, _, _, _ in posterior]
+    print('p mean = {}'.format(mean(ps)))
+    plt.hist(ps, label=f'posterior', density=True, alpha=0.7, bins=30)
     plt.plot(ddd, gamma.pdf(ddd, lark.ap, scale=1/lark.bp), label='prior')
     plt.legend()
     if save: savefig(save, 'phist.pdf')
