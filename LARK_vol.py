@@ -357,7 +357,6 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
             ax[a, b].plot(dom, [sqrt(lark.nu(t, p, S, W, B)) for t in dom], label='MCMC sample', color='blue')
             for w in W: ax[a, b].axvline(w, 0, 0.3, linewidth=5)
             if j == 3:
-                breakpoint()
                 if save: savefig(save, 'MCMC_iters.pdf')
                 plt.figure() # make neater
 
