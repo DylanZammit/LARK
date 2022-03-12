@@ -332,28 +332,34 @@ class LARK(Kernels):
 
 @timer
 def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
-    m = 1000
     m = len(lark.T)
     nu = lark.nu
     N = len(posterior)
     ps, ss = [], []
 
-    dom = linspace(0, 1, m)
     dom = lark.T
 
-    plt.title('LARK')
-    if mtype!='real': 
-        plt.plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='orange')
-    else:
-        import pandas as pd
-        rollstd = pd.Series(lark.X).ewm(10).std().bfill().values
-        #plt.plot(linspace(0, 1, lark.n), rollstd, label='rolling std')
-
     plot_post = []
+    i4 = {1: 0, 1000: 1, 50000: 2, 80000: 3}
+    i4 = {1: 0, 100: 1, 2000: 2, 4000: 3}
+    fig, ax = plt.subplots(2, 2)
+    fig.suptitle('MCMC samples at different iterations')
     for i, post in enumerate(posterior):
         progress(i, N, 'Plotting')
         p, S, J, W, B = post
         plot_post.append([sqrt(nu(x, p, S, W, B)*lark.dt) for x in dom])
+
+        if i in i4 and mtype != 'real':
+            j = i4[i]
+            a, b = j//2, j%2
+            ax[a, b].set_title(f'MCMC sample #{i}')
+            ax[a, b].plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='orange')
+            ax[a, b].plot(dom, [sqrt(lark.nu(t, p, S, W, B)) for t in dom], label='MCMC sample', color='blue')
+            for w in W: ax[a, b].axvline(w, 0, 0.3, linewidth=5)
+            if j == 3:
+                breakpoint()
+                if save: savefig(save, 'MCMC_iters.pdf')
+                plt.figure() # make neater
 
     plot_post = matrix(plot_post)
 
@@ -375,14 +381,15 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
     else:
         Tdom = dom
 
+    plt.title('LARK')
+    if mtype!='real':  plt.plot(Tdom, [getattr(Data, mtype)(x) for x in Tdom], label='True volatility', color='orange')
+
     plt.plot(Tdom, plot_post, label='Posterior Mean', color='blue')
     plt.fill_between(Tdom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.2,
                      color='blue')
 
     plt.legend()
-    T = Treal if Treal is not None else lark.T
-    T = lark.T
-    plt.plot(T, lark.X, alpha=0.4, label='Observations', color='black')
+    plt.plot(Tdom, lark.X, alpha=0.4, label='Observations', color='black')
     if save: savefig(save, 'LARK.pdf')
     plt.figure() # make neater
 
