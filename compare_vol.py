@@ -98,7 +98,7 @@ def main():
         lark.res = res
         print('done')
     if args.save: lark.save(save)
-    if not args.noplot: 
+    if 0 and not args.noplot: 
         plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal)
     plt.figure()
 
@@ -106,7 +106,9 @@ def main():
     if 1:
         print('\nRunning GP method...', end='')
         if isinstance(X, list): X = array(X)
-        K = Kernels().GP_expon
+        myK = Kernels().GP_expon
+        K = lambda x, y: myK(x, y, gamma=10)
+        #K = myK
         alpha = -1.27036 # these should depend on dt
         beta = pi**2/2
         Z = log(X**2)/beta
@@ -118,7 +120,7 @@ def main():
         plt.figure()
         print('done')
 
-    if 1:
+    if 0:
         print('Running GUGU method...', end='')
         model = Gugu(X, m=args.gugum)
         if not args.noplot:

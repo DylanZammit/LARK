@@ -39,12 +39,28 @@ class Birth(rv_continuous):
 
     def _logpdf(self, x):
         if x < self.eps: 
-            import pdb; pdb.set_trace()
             raise Exception
         return log(self.alpha)-self.beta*x
 
     def _ppf(self, x):
         return expinv(exp1(self.eps)*(1-x))
+
+class SaS(rv_continuous):
+
+    def __init__(self, eps, alpha, *args, **kwargs):
+        self.eps = eps
+        self.alpha = alpha
+        self.c = math.gamma(alpha)*sin(alpha*pi/2)/pi
+        assert alpha > 0
+        super().__init__(*args, **kwargs)
+
+    def _pdf(self, x):
+        return 0 if x < self.eps else self.c*abs(x)**(-1-self.alpha)
+
+    def _logpdf(self, x):
+        if x < self.eps: 
+            raise Exception
+        return log(self.c)-(1+self.alpha)*log(abs(x))
 
 
 def timer(func):

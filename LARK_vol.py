@@ -60,9 +60,13 @@ class LARK(Kernels):
             self.mu = {t: m for t, m in zip(T, mu)}
         print(f'{drift=} ')
 
-        self.birth = Gamma(eps=eps, nu=nu)
-        self.eps = eps/nu
-        print('eps={}, nu={}, vplus={}'.format(nu, eps, vplus))
+        if 0:
+            self.birth = Gamma(eps=eps/nu, nu=nu)
+            self.eps = eps/nu
+        else:
+            self.birth = SaS(eps=eps, alpha=nu)
+            self.eps = eps
+        print('eps={}, nu={}, vplus={}'.format(eps, nu, vplus))
         print('ap={}, bp={}, al={}, bl={}'.format(self.ap, self.bp, self.al, self.bl))
 
     def init(self):
@@ -340,25 +344,28 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
     dom = lark.T
 
     plot_post = []
-    i4 = {1: 0, 1000: 1, 50000: 2, 80000: 3}
-    i4 = {1: 0, 100: 1, 2000: 2, 4000: 3}
-    fig, ax = plt.subplots(2, 2)
-    fig.suptitle('MCMC samples at different iterations')
+    SUBS = False
+    if SUBS:
+        i4 = {1: 0, 1000: 1, 50000: 2, 80000: 3}
+        i4 = {1: 0, 100: 1, 2000: 2, 4000: 3}
+        fig, ax = plt.subplots(2, 2)
+        fig.suptitle('MCMC samples at different iterations')
     for i, post in enumerate(posterior):
         progress(i, N, 'Plotting')
         p, S, J, W, B = post
         plot_post.append([sqrt(nu(x, p, S, W, B)*lark.dt) for x in dom])
 
-        if i in i4 and mtype != 'real':
-            j = i4[i]
-            a, b = j//2, j%2
-            ax[a, b].set_title(f'MCMC sample #{i}')
-            ax[a, b].plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='orange')
-            ax[a, b].plot(dom, [sqrt(lark.nu(t, p, S, W, B)) for t in dom], label='MCMC sample', color='blue')
-            for w in W: ax[a, b].axvline(w, 0, 0.3, linewidth=5)
-            if j == 3:
-                if save: savefig(save, 'MCMC_iters.pdf')
-                plt.figure() # make neater
+        if SUBS:
+            if i in i4 and mtype != 'real':
+                j = i4[i]
+                a, b = j//2, j%2
+                ax[a, b].set_title(f'MCMC sample #{i}')
+                ax[a, b].plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='orange')
+                ax[a, b].plot(dom, [sqrt(lark.nu(t, p, S, W, B)) for t in dom], label='MCMC sample', color='blue')
+                for w in W: ax[a, b].axvline(w, 0, 0.3, linewidth=5)
+                if j == 3:
+                    if save: savefig(save, 'MCMC_iters.pdf')
+                    plt.figure() # make neater
 
     plot_post = matrix(plot_post)
 
@@ -446,10 +453,14 @@ def main():
     save = None
     if args.save:
         save = os.path.join(data, args.save)
-        os.mkdir(save)
-    elif args.load:
-        load = os.path.join(data, args.load)
+        try:
+            os.mkdir(save)
+            os.mkdir(os.path.join(save, 'plots'))
+        except:
+            print('WARNING: {} probably already exists!!'.format(save))
 
+    if args.load:
+        load = os.path.join(data, args.load)
     nomulti = args.nomulti
     cores = args.cores
 
@@ -462,7 +473,7 @@ def main():
     else:
         T, X, Treal = Data.gen_data_t(n=args.n, mtype=args.gentype)
 
-    lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=kernel, drift=args.drift, 
+    lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, proposals=prop_bwsp)
     if not args.load:
         res = lark(N=args.N, bip=args.bip)
