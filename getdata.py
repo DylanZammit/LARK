@@ -30,6 +30,7 @@ class Data:
 
     @classmethod
     def gen_data_t(self, n, equi=True, mtype='sigt'):
+        if n is None: n =1000
         sig = getattr(self, mtype, 'sigt')
         print('vol fun = {}'.format(sig.__name__))
         T = sorted(rand(n)) if not equi else linspace(0, 1, n)
@@ -73,7 +74,7 @@ class Data:
         return T, dX, dB
 
     @classmethod
-    def get_stock(self, n=None, start='2010-01-01', end='2021-03-01', ticker='AAPL', returns=True):
+    def get_stock(self, n=None, start='2018-05-28', end='2022-03-26', ticker='AAPL', returns=True):
         a = yf.Ticker(ticker)
         if n:
             end = pd.Timestamp.today().floor('D')

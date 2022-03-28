@@ -92,7 +92,7 @@ class GP:
         return 1.96*sg*np.sqrt(self.V(D))+self.E(D)
 
 if __name__ == '__main__':
-    n = 1000
+    n = 400
 
     model = Model()
     X = np.linspace(0, 1, n)

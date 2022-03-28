@@ -1,8 +1,8 @@
 real:
   kernel: aexpon
   eps: 0.01
-  #nu: 10
-  nu: 0.5
+  nu: 10
+  #nu: 1
   gammap: [3,3]
   gammal: [5,300]
   prop_bwsp: [0.005, 0.05, 0.05, 0.05]

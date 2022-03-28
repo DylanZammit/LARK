@@ -60,7 +60,7 @@ class LARK(Kernels):
             self.mu = {t: m for t, m in zip(T, mu)}
         print(f'{drift=} ')
 
-        if 0:
+        if 1:
             self.birth = Gamma(eps=eps/nu, nu=nu)
             self.eps = eps/nu
         else:
@@ -89,6 +89,7 @@ class LARK(Kernels):
         nui = self.nu(t, p, S, W, B)
         mean = self.mu[t]*self.dt
         std = sqrt(nui*self.dt)
+
         return norm.logpdf(x, loc=mean, scale=std)
 
     def __getstate__(self):
@@ -344,12 +345,12 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
     dom = lark.T
 
     plot_post = []
-    SUBS = False
+    SUBS = True
     if SUBS:
-        i4 = {1: 0, 1000: 1, 50000: 2, 80000: 3}
         i4 = {1: 0, 100: 1, 2000: 2, 4000: 3}
         fig, ax = plt.subplots(2, 2)
         fig.suptitle('MCMC samples at different iterations')
+        fig.tight_layout()
     for i, post in enumerate(posterior):
         progress(i, N, 'Plotting')
         p, S, J, W, B = post
@@ -362,7 +363,8 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
                 ax[a, b].set_title(f'MCMC sample #{i}')
                 ax[a, b].plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='orange')
                 ax[a, b].plot(dom, [sqrt(lark.nu(t, p, S, W, B)) for t in dom], label='MCMC sample', color='blue')
-                for w in W: ax[a, b].axvline(w, 0, 0.3, linewidth=5)
+                ax[a, b].plot((W,W),([0 for w in W], [b for b in B]), c='black')
+
                 if j == 3:
                     if save: savefig(save, 'MCMC_iters.pdf')
                     plt.figure() # make neater
@@ -382,7 +384,7 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
         print('LARK RMSE = {}'.format(RMSE(A, B)))
     #RMSE################
     if Treal is not None:
-        Tdom = Treal
+        Tdom = Treal[1:]
         plt.xticks(rotation=45)
     else:
         Tdom = dom
@@ -419,7 +421,7 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
 def main():
     global nomulti, cores, data
     parser = argparse.ArgumentParser(description='MCMC setup args.')
-    parser.add_argument('--n', help='Sample size [100]', type=int, default=100)
+    parser.add_argument('--n', help='Sample size [100]', type=int)
     parser.add_argument('--N', help='MCMC iterations [1000]', type=int, default=1000)
     parser.add_argument('--bip', help='MCMC burn-in period [0]', type=int, default=0)
     parser.add_argument('--eps', help='epsilon [0.5]', type=float, default=0.5)
@@ -469,9 +471,9 @@ def main():
 
     Treal = None
     if args.gentype=='real':
-        T, X, dB = Data.get_stock(n=args.n, ticker=args.ticker)
+        T, X, Treal = Data.get_stock(n=args.n, ticker=args.ticker)
     else:
-        T, X, Treal = Data.gen_data_t(n=args.n, mtype=args.gentype)
+        T, X, dB= Data.gen_data_t(n=args.n, mtype=args.gentype)
 
     lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, proposals=prop_bwsp)
