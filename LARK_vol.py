@@ -60,7 +60,7 @@ class LARK(Kernels):
             self.mu = {t: m for t, m in zip(T, mu)}
         print(f'{drift=} ')
 
-        if 1:
+        if 0:
             self.birth = Gamma(eps=eps/nu, nu=nu)
             self.eps = eps/nu
         else:
@@ -345,9 +345,10 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
     dom = lark.T
 
     plot_post = []
-    SUBS = True
+    SUBS = False
     if SUBS:
         i4 = {1: 0, 100: 1, 2000: 2, 4000: 3}
+        #i4 = {1000: 0, 4000: 1, 10000: 2, 40000: 3}
         fig, ax = plt.subplots(2, 2)
         fig.suptitle('MCMC samples at different iterations')
         fig.tight_layout()
@@ -384,7 +385,7 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
         print('LARK RMSE = {}'.format(RMSE(A, B)))
     #RMSE################
     if Treal is not None:
-        Tdom = Treal[1:]
+        Tdom = Treal#[1:]
         plt.xticks(rotation=45)
     else:
         Tdom = dom
@@ -392,12 +393,12 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
     plt.title('LARK')
     if mtype!='real':  plt.plot(Tdom, [getattr(Data, mtype)(x) for x in Tdom], label='True volatility', color='orange')
 
-    plt.plot(Tdom, plot_post, label='Posterior Mean', color='blue')
-    plt.fill_between(Tdom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.2,
-                     color='blue')
+    plt.plot(Tdom, plot_post, label='Posterior Mean', color='C0')
+    plt.fill_between(Tdom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.5,
+                     color='C0')
 
-    plt.legend()
     plt.plot(Tdom, lark.X, alpha=0.4, label='Observations', color='black')
+    plt.legend()
     if save: savefig(save, 'LARK.pdf')
     plt.figure() # make neater
 
@@ -475,6 +476,16 @@ def main():
     else:
         T, X, dB= Data.gen_data_t(n=args.n, mtype=args.gentype)
 
+    #####TEMP####
+    try:
+        with open(os.path.join(load, 'TX.json')) as fn:
+            data = json.load(fn)
+        res = data['post']
+        T = data['T']
+        X = data['X']
+    except:
+        print('No TX.json found')
+    ############
     lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, proposals=prop_bwsp)
     if not args.load:
