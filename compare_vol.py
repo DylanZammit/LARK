@@ -57,6 +57,7 @@ def main():
     gammap = params.get('gammap', [1, 1])
     gammal = params.get('gammal', [1, 1])
     prop_bwsp = params.get('prop_bwsp', [1, 1, 1, 1])
+    stable = params.get('stable', False)
 
     nomulti = args.nomulti
     cores = args.cores
@@ -83,7 +84,7 @@ def main():
 
     lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=kernel, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, proposals=prop_bwsp,
-               nomulti=nomulti, cores=cores)
+               nomulti=nomulti, cores=cores, stable=stable)
     if not args.load:
         print('Running LARK method...', end='')
         res = lark(N=args.N, bip=args.bip)

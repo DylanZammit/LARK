@@ -23,7 +23,7 @@ data = '/home/dylan/git/LARK/data'
 class LARK(Kernels):
 
     def __init__(self, T, X, p, eps, kernel, drift=None, nomulti=False, cores=4, 
-                 nu=1, gammap=None, gammal=None, proposals=None, vplus=10, **kwargs):
+                 nu=1, gammap=None, gammal=None, proposals=None, vplus=10, stable=False, **kwargs):
         '''
         kwargs are passed on as kernel parameters
         '''
@@ -60,7 +60,7 @@ class LARK(Kernels):
             self.mu = {t: m for t, m in zip(T, mu)}
         print(f'{drift=} ')
 
-        if 0:
+        if not stable:
             self.birth = Gamma(eps=eps/nu, nu=nu)
             self.eps = eps/nu
         else:
@@ -452,6 +452,7 @@ def main():
     gammap = params.get('gammap', [1, 1])
     gammal = params.get('gammal', [1, 1])
     prop_bwsp = params.get('prop_bwsp', [1, 1, 1, 1])
+    stable = params.get('stable', False)
 
     save = None
     if args.save:
@@ -487,7 +488,8 @@ def main():
         print('No TX.json found')
     ############
     lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
-                nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, proposals=prop_bwsp)
+                nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, 
+                proposals=prop_bwsp, stable=stable)
     if not args.load:
         res = lark(N=args.N, bip=args.bip)
     else:
