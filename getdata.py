@@ -88,7 +88,7 @@ class Data:
         X = diff(array(df.apply(log))) if returns else diff(insert(array(df), 0, 0))
         n = len(X)
         T = linspace(0, 1, n)
-        Treal = b.index
+        Treal = b.index[1:]
 
         X[X==0]=1e-8
         print(f'Using {ticker} data from {start} to {end} ({n} days)')

@@ -64,8 +64,13 @@ class LARK(Kernels):
             self.birth = Gamma(eps=eps/nu, nu=nu)
             self.eps = eps/nu
         else:
-            self.birth = SaS(eps=eps, alpha=nu)
-            self.eps = eps
+            from scipy.stats import pareto
+            alpha = kwargs.get('alpha')
+            self.birth = Pareto(eps=eps, nu=nu, alpha=alpha)
+            #self.birth = SaS(eps=eps, alpha=nu)
+            #self.a = nu
+            self.eps = eps/nu
+        self.stable = stable
         print('eps={}, nu={}, vplus={}'.format(eps, nu, vplus))
         print('ap={}, bp={}, al={}, bl={}'.format(self.ap, self.bp, self.al, self.bl))
 
@@ -362,8 +367,8 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
                 j = i4[i]
                 a, b = j//2, j%2
                 ax[a, b].set_title(f'MCMC sample #{i}')
-                ax[a, b].plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='orange')
-                ax[a, b].plot(dom, [sqrt(lark.nu(t, p, S, W, B)) for t in dom], label='MCMC sample', color='blue')
+                ax[a, b].plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='C1')
+                ax[a, b].plot(dom, [sqrt(lark.nu(t, p, S, W, B)) for t in dom], label='MCMC sample', color='C0')
                 ax[a, b].plot((W,W),([0 for w in W], [b for b in B]), c='black')
 
                 if j == 3:
@@ -397,7 +402,7 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
     plt.fill_between(Tdom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.5,
                      color='C0')
 
-    plt.plot(Tdom, lark.X, alpha=0.4, label='Observations', color='black')
+    plt.plot(Tdom, lark.X, alpha=0.5, label='Observations', color='black')
     plt.legend()
     if save: savefig(save, 'LARK.pdf')
     plt.figure() # make neater
@@ -453,6 +458,7 @@ def main():
     gammal = params.get('gammal', [1, 1])
     prop_bwsp = params.get('prop_bwsp', [1, 1, 1, 1])
     stable = params.get('stable', False)
+    alpha = params.get('alpha')
 
     save = None
     if args.save:
@@ -489,7 +495,7 @@ def main():
     ############
     lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, 
-                proposals=prop_bwsp, stable=stable)
+                proposals=prop_bwsp, stable=stable, alpha=alpha)
     if not args.load:
         res = lark(N=args.N, bip=args.bip)
     else:

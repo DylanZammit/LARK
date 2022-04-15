@@ -82,11 +82,11 @@ def plot_gugu(model, T, gentype='sigt', Treal=None):
         plt.xticks(rotation=45)
     else:
         Tdom = T
-    plt.plot(Tdom, mean, label='Histogram-Type', color='blue')
-    plt.fill_between(Tdom, low, up, alpha=0.2, color='blue')
+    plt.plot(Tdom, mean, label='Histogram-Type', color='C0')
+    plt.fill_between(Tdom, low, up, alpha=0.5, color='C0')
     #plt.plot(df.index, [model.s2_kernel(t) for t in dom], label='kernel_boxcar')
     #plt.plot(T, [model.s2_kernel_gauss(t) for t in dom], label='kernel_gauss')
-    plt.plot(Tdom, model.Y, color='black', alpha=0.4)
+    plt.plot(Tdom, model.Y, color='black', alpha=0.5, label='Obeservations')
     plt.legend()
     #RMSE################
     if gentype!='real':

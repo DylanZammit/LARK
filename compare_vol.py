@@ -42,6 +42,9 @@ def main():
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     parser.add_argument('--gugum', help='Gugu bin width', type=int, default=100)
     parser.add_argument('--config', type=str, help='config with params based on gentype')
+    parser.add_argument('--nolark', help='Plot output', action='store_true')
+    parser.add_argument('--nogp', help='Plot output', action='store_true')
+    parser.add_argument('--nogugu', help='Plot output', action='store_true')
     args = parser.parse_args()
 
     if args.config:
@@ -58,6 +61,7 @@ def main():
     gammal = params.get('gammal', [1, 1])
     prop_bwsp = params.get('prop_bwsp', [1, 1, 1, 1])
     stable = params.get('stable', False)
+    alpha = params.get('alpha')
 
     nomulti = args.nomulti
     cores = args.cores
@@ -82,29 +86,31 @@ def main():
     else:
         T, X, dB = Data.gen_data_t(n=args.n, mtype=args.gentype)
 
-    lark = LARK(T=T, X=X, p=p, eps=args.eps, kernel=kernel, drift=args.drift, 
+    lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, proposals=prop_bwsp,
-               nomulti=nomulti, cores=cores, stable=stable)
-    if not args.load:
-        print('Running LARK method...', end='')
-        res = lark(N=args.N, bip=args.bip)
-        print('done')
-    else:
-        print('Loading LARK method...', end='')
-        with open(os.path.join(load, 'res.json')) as fn:
-            data = json.load(fn)
-        res = data['post']
-        lark.T = data['T']
-        lark.X = data['X']
-        lark.res = res
-        print('done')
-    if args.save: lark.save(save)
-    if 0 and not args.noplot: 
-        plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal)
-    plt.figure()
+               nomulti=nomulti, cores=cores, stable=stable, alpha=alpha)
+
+    if not args.nolark:
+        if not args.load:
+            print('Running LARK method...', end='')
+            res = lark(N=args.N, bip=args.bip)
+            print('done')
+        else:
+            print('Loading LARK method...', end='')
+            with open(os.path.join(load, 'res.json')) as fn:
+                data = json.load(fn)
+            res = data['post']
+            lark.T = data['T']
+            lark.X = data['X']
+            lark.res = res
+            print('done')
+        if args.save: lark.save(save)
+        if 0 and not args.noplot: 
+            plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal)
+        plt.figure()
 
     T, X = lark.T, lark.X
-    if 1:
+    if not args.nogp:
         print('\nRunning GP method...', end='')
         if isinstance(X, list): X = array(X)
         myK = Kernels().GP_expon
@@ -121,7 +127,7 @@ def main():
         plt.figure()
         print('done')
 
-    if 0:
+    if not args.nogugu:
         print('Running GUGU method...', end='')
         model = Gugu(X, m=args.gugum)
         if not args.noplot:
