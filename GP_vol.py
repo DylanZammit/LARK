@@ -10,7 +10,7 @@ def plot_gp(gp, Z, gentype='sigt', Treal=None):
     T, X = gp.X, gp.Y
     n = len(T)
     alpha = -1.27036# -np.log(len(T))# these should depend on dt
-    beta = np.pi**2/2
+    beta = np.sqrt(np.pi**2/2)
     g = lambda x: np.sqrt(np.exp(x*beta-alpha)*len(T))
     mean = g(gp.E(T))
     lower = g(np.diag(gp.band(T, False)))

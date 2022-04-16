@@ -86,6 +86,13 @@ def main():
     else:
         T, X, dB = Data.gen_data_t(n=args.n, mtype=args.gentype)
 
+    if args.load:
+        with open(os.path.join(load, 'res.json')) as fn:
+            data = json.load(fn)
+        T = array(data['T'])
+        X = array(data['X'])
+        res = data['post']
+
     lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, proposals=prop_bwsp,
                nomulti=nomulti, cores=cores, stable=stable, alpha=alpha)
@@ -97,15 +104,10 @@ def main():
             print('done')
         else:
             print('Loading LARK method...', end='')
-            with open(os.path.join(load, 'res.json')) as fn:
-                data = json.load(fn)
-            res = data['post']
-            lark.T = data['T']
-            lark.X = data['X']
             lark.res = res
             print('done')
         if args.save: lark.save(save)
-        if 0 and not args.noplot: 
+        if not args.noplot: 
             plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal)
         plt.figure()
 
@@ -114,10 +116,10 @@ def main():
         print('\nRunning GP method...', end='')
         if isinstance(X, list): X = array(X)
         myK = Kernels().GP_expon
-        K = lambda x, y: myK(x, y, gamma=10)
+        K = lambda x, y: myK(x, y, gamma=1)
         #K = myK
         alpha = -1.27036 # these should depend on dt
-        beta = pi**2/2
+        beta = sqrt(pi**2/2)
         Z = log(X**2)/beta
 
         gp = GP(T, Z, K, sig=1) # change sig
