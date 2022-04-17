@@ -100,7 +100,7 @@ def main():
     if not args.nolark:
         if not args.load:
             print('Running LARK method...', end='')
-            res = lark(N=args.N, bip=args.bip)
+            res = lark(N=args.N)
             print('done')
         else:
             print('Loading LARK method...', end='')
@@ -108,7 +108,7 @@ def main():
             print('done')
         if args.save: lark.save(save)
         if not args.noplot: 
-            plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal)
+            plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal, bip=args.bip)
         plt.figure()
 
     T, X = lark.T, lark.X
