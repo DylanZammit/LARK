@@ -12,18 +12,22 @@ import matplotlib.pyplot as plt
 from numpy import *
 from numpy.random import rand, randint, randn, exponential
 from copy import deepcopy
-from scipy.stats import poisson, gamma, norm, nbinom, chi2, lognorm
+from scipy.stats import poisson, gamma, norm, nbinom, chi2, lognorm, pareto
 
 from common import *
 from kernels import Kernels
 from getdata import Data
+import time
 
 data = '/home/dylan/git/LARK/data'
+START = time.time()
+LASTLOG = 0
+profile = False
 
 timers = {}
-import time
 def time_avg(f):
     def wrap(*args, **kwargs):
+        global LASTLOG
         start = time.time()
         result = f(*args, **kwargs)
         if not profile: return result
@@ -38,9 +42,12 @@ def time_avg(f):
             avg_time = (avg_time*n+this_time)/(n+1)
             tot_time += this_time
         timers[f.__name__] = (avg_time, tot_time, n+1)
-        if n%50==0:
+        prog_time = int(time.time()-START)
+        if prog_time-LASTLOG>=5:
+            LASTLOG = prog_time
+            prog_time = str(prog_time)+'s'
             stimers = sorted(timers.items(), key=lambda x:x[1][1], reverse=True)
-            print('-'*70)
+            print('-'*30, f'{prog_time:<10s}', '-'*30)
             print('{:<20s}{:<20s}{:<20s}{:<20s}'.format('Function', 'TotTime(s)', 'AvgTime(ms)', 'n'))
             print('-'*70)
             for k, v in stimers:
@@ -95,15 +102,16 @@ class LARK(Kernels):
             self.birth = Gamma(eps=eps/nu, nu=nu)
             self.eps = eps/nu
         else:
-            from scipy.stats import pareto
             alpha = kwargs.get('alpha')
             self.birth = Pareto(eps=eps, nu=nu, alpha=alpha)
             #self.birth = SaS(eps=eps, alpha=nu)
-            #self.a = nu
             self.eps = eps/nu
         self.stable = stable
         print('eps={}, nu={}, vplus={}'.format(eps, nu, vplus))
         print('ap={}, bp={}, al={}, bl={}'.format(self.ap, self.bp, self.al, self.bl))
+
+        self.l0 = None
+        self.cache_l0 = True
 
     @time_avg
     def init(self):
@@ -114,7 +122,6 @@ class LARK(Kernels):
         self.S = list(gamma.rvs(self.al, scale=1/self.bl, size=J))
         self.p = gamma.rvs(self.ap, scale=1/self.bp)
     
-    #@time_avg
     def nu(self, t, p, S, W, B):
         k = self.kernel
         out = self.b0 + sum([b*k(t, y=w, p=p, s=s) for w, b, s in zip(W, B, S)])
@@ -140,6 +147,8 @@ class LARK(Kernels):
 
     @time_avg
     def l(self, p=None, S=None, W=None, B=None):
+        if p is None and S is None and W is None and B is None and self.l0 is not None and self.cache_l0:
+            return self.l0
         p = p if p is not None else self.p
         S = S if S is not None else self.S
         W = W if W is not None else self.W
@@ -236,7 +245,9 @@ class LARK(Kernels):
             accepted = True
             self.accepted['K'] += 1
             self.J, self.W, self.B, self.S = deepcopy(J1), deepcopy(W1), deepcopy(B1), deepcopy(S1)
+            self.l0 = l1
         else:
+            if self.l0 is None: self.l0 = l0
             accepted = False
 
         if 0: print('B, D, U={}, {}, {}....accepted={}'.format(birth, death, update, accepted))
@@ -294,6 +305,9 @@ class LARK(Kernels):
         if e+q > 0: 
             self.S = deepcopy(S1)
             self.accepted['s'] += 1
+            self.l0 = l1
+        else:
+            if self.l0 is None: self.l0 = l0
 
     @time_avg
     def sample_p(self):
@@ -315,6 +329,9 @@ class LARK(Kernels):
         if e+q > 0: 
             self.p = pnew
             self.accepted['p'] += 1
+            self.l0 = l1
+        else:
+            if self.l0 is None: self.l0 = l0
 
     @time_avg
     def sample_w(self):
@@ -335,6 +352,9 @@ class LARK(Kernels):
         if e+q > 0: 
             self.W = W1
             self.accepted['w'] += 1
+            self.l0 = l1
+        else:
+            if self.l0 is None: self.l0 = l0
 
     def save(self, save):
         out = {
@@ -345,8 +365,8 @@ class LARK(Kernels):
         with open(os.path.join(save, 'res.json'), 'w') as f:
             json.dump(out, f)
 
-    @timer
     @time_avg
+    @timer
     def __call__(self, N=100, bip=0):
         assert N > bip
         self.accepted = {k: 0 for k in ['s','p', 'w', 'K']}
