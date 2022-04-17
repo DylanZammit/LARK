@@ -41,6 +41,7 @@ def main():
     parser.add_argument('--kernel', type=str, help='kernel function', default='expon')
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     parser.add_argument('--gugum', help='Gugu bin width', type=int, default=100)
+    parser.add_argument('--gpgam', help='GP gamma param', type=int, default=11)
     parser.add_argument('--config', type=str, help='config with params based on gentype')
     parser.add_argument('--nolark', help='Plot output', action='store_true')
     parser.add_argument('--nogp', help='Plot output', action='store_true')
@@ -116,7 +117,7 @@ def main():
         print('\nRunning GP method...', end='')
         if isinstance(X, list): X = array(X)
         myK = Kernels().GP_expon
-        K = lambda x, y: myK(x, y, gamma=1)
+        K = lambda x, y: myK(x, y, gamma=args.gpgam)
         #K = myK
         alpha = -1.27036 # these should depend on dt
         beta = sqrt(pi**2/2)
