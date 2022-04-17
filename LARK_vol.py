@@ -341,7 +341,7 @@ class LARK(Kernels):
         return res
 
 @timer
-def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
+def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
     m = len(lark.T)
     nu = lark.nu
     N = len(posterior)
@@ -359,6 +359,7 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None):
         fig.tight_layout()
     for i, post in enumerate(posterior):
         progress(i, N, 'Plotting')
+        if i < bip: continue
         p, S, J, W, B = post
         plot_post.append([sqrt(nu(x, p, S, W, B)*lark.dt) for x in dom])
 
@@ -497,7 +498,7 @@ def main():
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, 
                 proposals=prop_bwsp, stable=stable, alpha=alpha)
     if not args.load:
-        res = lark(N=args.N, bip=args.bip)
+        res = lark(N=args.N)
     else:
         with open(os.path.join(load, 'res.json')) as fn:
             data = json.load(fn)
@@ -507,7 +508,7 @@ def main():
         lark.res = res
 
     if args.save: lark.save(save)
-    if not args.noplot: plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal)
+    if not args.noplot: plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal, bip=args.bip)
     plt.show()
 
 if __name__=='__main__':

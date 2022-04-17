@@ -1,0 +1,19 @@
+Jmean =  5.711
+phat = 1.7939
+gugum = 20
+GP kernel: GP_expon(gamma=1)
+
+RMSE
+----
+gugu = 0.283
+GP = 0.269
+LARK = 0.2107
+
+sigt:
+  kernel: expon
+  eps: 0.1
+  nu: 1
+  gammap: [4,4]
+  gammal: [5,300]
+  prop_bwsp: [0.1, 0.05, 0.05, 0.05]
+  vplus: 10

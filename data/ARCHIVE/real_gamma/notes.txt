@@ -1,0 +1,4 @@
+Jmean = 11.703
+phat = 0.404
+gugum = 20
+GP kernel: GP_expon(gamma=10)

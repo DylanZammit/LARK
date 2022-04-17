@@ -8,7 +8,7 @@ real:
   gammal: [5,300]
   prop_bwsp: [0.005, 0.05, 0.05, 0.05]
   vplus: 10
-  #stable: True
+  stable: True
 
 jump:
   kernel: aexpon
