@@ -9,10 +9,14 @@ class Kernels:
         return exp(-abs(x-y)**p/2/s)
 
     def aexpon(self, x, y, p=1, s=0.05, side='right', **kwargs):
-        if side=='right' and x < y: return 0
-        if side=='left' and x > y: return 0
-        if x < y: return 0
-        return exp(-abs(x-y)**p/s)
+        if isinstance(y, list):
+            delta = [0]*len(y)
+            for i, yy in enumerate(y):
+                delta[i] = (('right' and x>yy) or ('left' and x<yy))*1
+            delta = array(delta)
+        else:
+            delta = (('right' and x>y) or ('left' and x<y))*1
+        return delta*exp(-abs(x-y)**p/s)
 
     def haar(self, x, y, s=0.1, **kwargs):
         return (abs(x-y)<=s)*1

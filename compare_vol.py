@@ -18,6 +18,8 @@ from LARK_vol import LARK, plot_out
 from GP_vol import GP, plot_gp
 from gugu_vol import Gugu, plot_gugu
 from kernels import Kernels
+import warnings
+warnings.filterwarnings("ignore")
 
 data = '/home/dylan/git/LARK/data'
 

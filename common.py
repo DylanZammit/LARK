@@ -122,9 +122,21 @@ def timer(func):
         return out
     return wrapper_function
 
-def progress(i, N, title=''):
+def progress(i, N, title='', elapsed=None):
     if int(i/N*100)!=int((i-1)/N*100):
-        print(f'{title}: {int(i/N*100)}%', end='\r')
+        if elapsed: 
+            unit='s'
+            ETA = (elapsed*N/i-elapsed)
+            if ETA > 60: 
+                ETA/=60
+                unit = 'm'
+            if ETA > 60: 
+                ETA/=60
+                unit = 'h'
+
+            print(f'{title}: {int(i/N*100)}%...ETA={ETA:.2f}{unit}', end='\r')
+        else:
+            print(f'{title}: {int(i/N*100)}%', end='\r')
 
 def savefig(save, name):
     fn = os.path.join(data, save, 'plots', name)

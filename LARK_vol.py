@@ -18,6 +18,8 @@ from common import *
 from kernels import Kernels
 from getdata import Data
 import time
+import warnings
+warnings.filterwarnings("ignore")
 
 data = '/home/dylan/git/LARK/data'
 START = time.time()
@@ -47,7 +49,7 @@ def time_avg(f):
             LASTLOG = prog_time
             prog_time = str(prog_time)+'s'
             stimers = sorted(timers.items(), key=lambda x:x[1][1], reverse=True)
-            print('-'*30, f'{prog_time:<10s}', '-'*30)
+            print('-'*30, f'{prog_time:<8s}', '-'*30)
             print('{:<20s}{:<20s}{:<20s}{:<20s}'.format('Function', 'TotTime(s)', 'AvgTime(ms)', 'n'))
             print('-'*70)
             for k, v in stimers:
@@ -124,7 +126,8 @@ class LARK(Kernels):
     
     def nu(self, t, p, S, W, B):
         k = self.kernel
-        out = self.b0 + sum([b*k(t, y=w, p=p, s=s) for w, b, s in zip(W, B, S)])
+        out = self.b0 + B@k(t, y=W, p=p, s=S)
+        #out = self.b0 + sum([b*k(t, y=w, p=p, s=s) for b, w, s in zip(B, W, S)])
         return out
 
     def _l(self, i):
@@ -380,7 +383,7 @@ class LARK(Kernels):
 
         for i in range(N):
             self.iter = i
-            progress(i, N, 'LARK')
+            progress(i, N, 'LARK', elapsed=time.time()-START)
 
             self.rj_mcmc()
             if self.update:
@@ -419,8 +422,9 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
         fig, ax = plt.subplots(2, 2)
         fig.suptitle('MCMC samples at different iterations')
         fig.tight_layout()
+    start_plot = time.time()
     for i, post in enumerate(posterior):
-        progress(i, N, 'Plotting')
+        progress(i, N, 'Plotting', elapsed=time.time()-start_plot)
         if i < bip: continue
         p, S, J, W, B = post
         plot_post.append([sqrt(nu(x, p, S, W, B)*lark.dt) for x in dom])
@@ -561,7 +565,7 @@ def main():
     ############
     lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, 
-                proposals=prop_bwsp, stable=stable, alpha=alpha)
+                proposals=prop_bwsp, stable=stable, alpha=alpha, nomulti=nomulti)
     if not args.load:
         res = lark(N=args.N)
     else:
