@@ -20,6 +20,37 @@ from getdata import Data
 
 data = '/home/dylan/git/LARK/data'
 
+timers = {}
+import time
+def time_avg(f):
+    def wrap(*args, **kwargs):
+        start = time.time()
+        result = f(*args, **kwargs)
+        if not profile: return result
+        end = time.time()
+        this_time= end-start
+        if f.__name__ not in timers:
+            n = 2
+            avg_time = this_time
+            tot_time = this_time
+        else:
+            avg_time, tot_time, n = timers[f.__name__]
+            avg_time = (avg_time*n+this_time)/(n+1)
+            tot_time += this_time
+        timers[f.__name__] = (avg_time, tot_time, n+1)
+        if n%50==0:
+            stimers = sorted(timers.items(), key=lambda x:x[1][1], reverse=True)
+            print('-'*70)
+            print('{:<20s}{:<20s}{:<20s}{:<20s}'.format('Function', 'TotTime(s)', 'AvgTime(ms)', 'n'))
+            print('-'*70)
+            for k, v in stimers:
+                print('{:<20s}{:<20f}{:<20f}{:<20d}'.format(k, round(v[1], 4), round(v[0]*100, 4), v[2]))
+            m = len(stimers)+4
+            print('\033[F')
+            print('\033[A'*m)
+        return result
+    return wrap
+
 class LARK(Kernels):
 
     def __init__(self, T, X, p, eps, kernel, drift=None, nomulti=False, cores=4, 
@@ -74,6 +105,7 @@ class LARK(Kernels):
         print('eps={}, nu={}, vplus={}'.format(eps, nu, vplus))
         print('ap={}, bp={}, al={}, bl={}'.format(self.ap, self.bp, self.al, self.bl))
 
+    @time_avg
     def init(self):
         J = poisson.rvs(self.vplus)
         self.J = J
@@ -82,6 +114,7 @@ class LARK(Kernels):
         self.S = list(gamma.rvs(self.al, scale=1/self.bl, size=J))
         self.p = gamma.rvs(self.ap, scale=1/self.bp)
     
+    #@time_avg
     def nu(self, t, p, S, W, B):
         k = self.kernel
         out = self.b0 + sum([b*k(t, y=w, p=p, s=s) for w, b, s in zip(W, B, S)])
@@ -105,6 +138,7 @@ class LARK(Kernels):
     def __setstate__(self, state):
         self.__dict__.update(state)
 
+    @time_avg
     def l(self, p=None, S=None, W=None, B=None):
         p = p if p is not None else self.p
         S = S if S is not None else self.S
@@ -119,6 +153,7 @@ class LARK(Kernels):
             out = sum(self.pool.map(self._l, iters))
         return out
 
+    @time_avg
     def qb(self, l0, l1, bnew):
         qd = norm.cdf((self.eps-bnew)/self.b_proposal)
         l = l1-l0
@@ -129,6 +164,7 @@ class LARK(Kernels):
 
         return min([0, l+prior+prop])
 
+    @time_avg
     def qd(self, l0, l1, bold):
         qd = norm.cdf((self.eps-bold)/self.b_proposal)
         l = l1-l0
@@ -139,6 +175,7 @@ class LARK(Kernels):
 
         return min([0, l+prior+prop])
 
+    @time_avg
     def qu(self, l0, l1, bold, bnew):
         l = l1-l0
         prior = self.birth.logpdf(bnew)-self.birth.logpdf(bold)
@@ -146,6 +183,7 @@ class LARK(Kernels):
 
         return min([0, l+prior+prop])
 
+    @time_avg
     def rj_mcmc(self):
         J1 = deepcopy(self.J)
         W1 = deepcopy(self.W)
@@ -235,6 +273,7 @@ class LARK(Kernels):
         ######FOR DEBUG########
 
 
+    @time_avg
     def sample_s(self):
         S1 = deepcopy(self.S)
         sold = S1[self.update_comp]
@@ -256,6 +295,7 @@ class LARK(Kernels):
             self.S = deepcopy(S1)
             self.accepted['s'] += 1
 
+    @time_avg
     def sample_p(self):
         pold = self.p
         pnew = pold + norm.rvs()*self.p_proposal
@@ -276,6 +316,7 @@ class LARK(Kernels):
             self.p = pnew
             self.accepted['p'] += 1
 
+    @time_avg
     def sample_w(self):
         W1 = deepcopy(self.W)
         wold = W1[self.update_comp]
@@ -305,6 +346,7 @@ class LARK(Kernels):
             json.dump(out, f)
 
     @timer
+    @time_avg
     def __call__(self, N=100, bip=0):
         assert N > bip
         self.accepted = {k: 0 for k in ['s','p', 'w', 'K']}
@@ -426,7 +468,7 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
     if save: savefig(save, 'phist.pdf')
 
 def main():
-    global nomulti, cores, data
+    global nomulti, cores, data, profile
     parser = argparse.ArgumentParser(description='MCMC setup args.')
     parser.add_argument('--n', help='Sample size [100]', type=int)
     parser.add_argument('--N', help='MCMC iterations [1000]', type=int, default=1000)
@@ -437,6 +479,7 @@ def main():
     parser.add_argument('--ticker', type=str, help='ticker to get data', default='AAPL')
     parser.add_argument('--noplot', help='Plot output', action='store_true')
     parser.add_argument('--nomulti', help='no multiprocessing', action='store_true')
+    parser.add_argument('--profile', help='profile methods', action='store_true')
     parser.add_argument('--cores', help='Number of cores to use', type=int, default=os.cpu_count())
     parser.add_argument('--save', type=str, help='folder name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
@@ -444,6 +487,8 @@ def main():
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     parser.add_argument('--config', type=str, help='config with params based on gentype')
     args = parser.parse_args()
+
+    profile = args.profile
 
     if args.config:
         with open(args.config) as f:
