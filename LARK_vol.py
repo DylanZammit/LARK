@@ -30,7 +30,7 @@ def time_avg(f):
         end = time.time()
         this_time= end-start
         if f.__name__ not in timers:
-            n = 2
+            n = 0
             avg_time = this_time
             tot_time = this_time
         else:
