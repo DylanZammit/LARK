@@ -126,6 +126,7 @@ def progress(i, N, title='', elapsed=None):
     if int(i/N*100)!=int((i-1)/N*100):
         if elapsed: 
             unit='s'
+            if i==0: i+=1e-6
             ETA = (elapsed*N/i-elapsed)
             if ETA > 60: 
                 ETA/=60

@@ -3,6 +3,7 @@ import pandas as pd
 import yfinance as yf
 from numpy.random import rand, randn
 from pandas.tseries.offsets import BDay
+random.seed(0)
 
 def aexpon(x, y, p=1, s=0.05, side='right', **kwargs):
     if side=='right' and x < y: return 0

@@ -1,5 +1,6 @@
 from numpy import *
 
+#seterr(all='raise')
 class Kernels:
 
     def GP_expon(self, x, y, gamma=1):
@@ -12,11 +13,19 @@ class Kernels:
         if isinstance(y, list):
             delta = [0]*len(y)
             for i, yy in enumerate(y):
-                delta[i] = (('right' and x>yy) or ('left' and x<yy))*1
+                delta[i] = ((side=='right' and x>yy) or (side=='left' and x<yy))*1
             delta = array(delta)
         else:
-            delta = (('right' and x>y) or ('left' and x<y))*1
-        return delta*exp(-abs(x-y)**p/s)
+            delta = ((side=='right' and x>y) or (side=='left' and x<y))*1
+
+        try:
+            out = delta*exp(-abs(x-y)**p/s)
+        except:
+            print('In KERNELS')
+            breakpoint()
+        
+
+        return out
 
     def haar(self, x, y, s=0.1, **kwargs):
         return (abs(x-y)<=s)*1

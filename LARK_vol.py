@@ -19,7 +19,8 @@ from kernels import Kernels
 from getdata import Data
 import time
 import warnings
-warnings.filterwarnings("ignore")
+random.seed(0)
+#warnings.filterwarnings("ignore")
 
 data = '/home/dylan/git/LARK/data'
 START = time.time()
@@ -127,7 +128,6 @@ class LARK(Kernels):
     def nu(self, t, p, S, W, B):
         k = self.kernel
         out = self.b0 + B@k(t, y=W, p=p, s=S)
-        #out = self.b0 + sum([b*k(t, y=w, p=p, s=s) for b, w, s in zip(B, W, S)])
         return out
 
     def _l(self, i):
@@ -292,6 +292,8 @@ class LARK(Kernels):
         S1 = deepcopy(self.S)
         sold = S1[self.update_comp]
         snew = sold + norm.rvs()*self.s_proposal
+        if snew < 0: return
+
         S1[self.update_comp] = snew
 
         l0 = self.l()
@@ -316,7 +318,7 @@ class LARK(Kernels):
     def sample_p(self):
         pold = self.p
         pnew = pold + norm.rvs()*self.p_proposal
-        #pnew = exp(log(pold) + norm.rvs()*self.p_proposal)
+        if pnew < 0: return
 
         l0 = self.l()
         l1 = self.l(p=pnew)
@@ -509,7 +511,7 @@ def main():
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
     parser.add_argument('--kernel', type=str, help='kernel function', default='expon')
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
-    parser.add_argument('--config', type=str, help='config with params based on gentype')
+    parser.add_argument('--config', type=str, help='config with params based on gentype', default='config.yml')
     args = parser.parse_args()
 
     profile = args.profile

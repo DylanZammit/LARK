@@ -19,7 +19,8 @@ from GP_vol import GP, plot_gp
 from gugu_vol import Gugu, plot_gugu
 from kernels import Kernels
 import warnings
-warnings.filterwarnings("ignore")
+#warnings.filterwarnings("ignore")
+random.seed(0)
 
 data = '/home/dylan/git/LARK/data'
 
@@ -44,7 +45,7 @@ def main():
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     parser.add_argument('--gugum', help='Gugu bin width', type=int, default=100)
     parser.add_argument('--gpgam', help='GP gamma param', type=int, default=11)
-    parser.add_argument('--config', type=str, help='config with params based on gentype')
+    parser.add_argument('--config', type=str, help='config with params based on gentype', default='config.yml')
     parser.add_argument('--nolark', help='Plot output', action='store_true')
     parser.add_argument('--nogp', help='Plot output', action='store_true')
     parser.add_argument('--nogugu', help='Plot output', action='store_true')
