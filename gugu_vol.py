@@ -76,7 +76,7 @@ def plot_gugu(model, T, gentype='sigt', Treal=None):
     mean, low, up = mean/np.sqrt(n), low/np.sqrt(n), up/np.sqrt(n)
     if gentype !='real': 
         truevol = [getattr(Data, gentype)(x) for x in dom]
-        plt.plot(dom, truevol, label='True volatility', color='orange')
+        plt.plot(dom, truevol, label='True volatility', color='orange', alpha=0.5)
     if Treal is not None:
         Tdom = Treal
         plt.xticks(rotation=45)

@@ -26,7 +26,7 @@ def plot_gp(gp, Z, gentype='sigt', Treal=None):
     plt.title('GP Method')
     plt.plot(Tdom, Z, color='black', alpha=0.5, label='Observations')
     if gentype != 'real': 
-        plt.plot(T, [getattr(Data, gentype)(t) for t in T], label='True Volatility', color='orange')
+        plt.plot(T, [getattr(Data, gentype)(t) for t in T], label='True Volatility', color='orange', alpha=0.5)
     plt.plot(Tdom, mean, label='GP posterior', color='C0')
     plt.fill_between(Tdom, lower, upper, alpha=0.5, color='C0')
     plt.legend()
