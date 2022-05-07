@@ -14,6 +14,14 @@ def aexpon(x, y, p=1, s=0.05, side='right', **kwargs):
 class Data:
 
     @classmethod
+    def jump2(self, t):
+        W = [-0.1, 0.1, 0.2, 0.25, 0.4, 0.5, 0.7, 0.75, 0.9]
+        P = [1.2, 1.6, 0.9, 0.9, 1.1, 1.2, 0.6, 0.6, 1.4]
+        s = 0.05
+        B = [5, 2, 1, 1, 3, 1, 0.5, 1, 2]
+        return 0.1+sum([b*aexpon(x=t, y=w, p=p, s=s) for b, w, p in zip(B, W, P)])
+
+    @classmethod
     def jump(self, t):
         W = [-0.1, 0.2, 0.5, 0.9]
         P = [1.2, 1.6, 1.1, 1.2]
@@ -99,15 +107,8 @@ class Data:
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
-    W = [-0.1, 0.2, 0.5, 0.9]
-    P = [1.2, 1.6, 1.1, 1.2]
-    s = 0.05
-    B = [5, 2, 3, 1]
-
     dom = linspace(0, 1, 1000)
-    plt.plot(dom, [Data.LARK_jump(x) for x in dom])
+    plt.plot(dom, [Data.jump2(x) for x in dom])
 
-    for w, p, b in zip(W, P, B):
-        plt.plot(dom, [aexpon(x=t, y=w, p=p, s=s) for t in dom], color='black', alpha=0.4)
     plt.show()
 
