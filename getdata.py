@@ -22,7 +22,7 @@ class Data:
         sig = 0.3
         z = randn()*sig
 
-        return 0.1+sum([b*aexpon(x=t, y=w, p=p, s=s) for b, w, p in zip(B, W, P)])+z
+        return abs(0.3+sum([b*aexpon(x=t, y=w, p=p, s=s) for b, w, p in zip(B, W, P)])+z)
 
     @classmethod
     def jump(self, t):
