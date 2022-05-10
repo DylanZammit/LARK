@@ -243,16 +243,6 @@ class LARK(Kernels):
         self.update = update
         if update: self.update_comp = j
 
-        e = exponential(1)
-        if e+q > 0:
-            accepted = True
-            self.accepted['K'] += 1
-            self.J, self.W, self.B, self.S = deepcopy(J1), deepcopy(W1), deepcopy(B1), deepcopy(S1)
-            self.l0 = l1
-        else:
-            if self.l0 is None: self.l0 = l0
-            accepted = False
-
         if 0: print('B, D, U={}, {}, {}....accepted={}'.format(birth, death, update, accepted))
         ######FOR DEBUG########
         #if (self.iter > 200 ) and 1: 
@@ -282,9 +272,19 @@ class LARK(Kernels):
                         print(f'new birth b={b}')
                         print(f'new loc={w}')
                 print(f'l0={l0}, l1={l1}')
-                import pdb; pdb.set_trace()
+                breakpoint()
             myplot()
         ######FOR DEBUG########
+
+        e = exponential(1)
+        if e+q > 0:
+            accepted = True
+            self.accepted['K'] += 1
+            self.J, self.W, self.B, self.S = deepcopy(J1), deepcopy(W1), deepcopy(B1), deepcopy(S1)
+            self.l0 = l1
+        else:
+            if self.l0 is None: self.l0 = l0
+            accepted = False
 
 
     @time_avg

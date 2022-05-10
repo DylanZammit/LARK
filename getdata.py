@@ -20,6 +20,7 @@ class Data:
         s = 0.05
         B = [5, 2, 1, 1, 3, 1, 0.5, 1, 2]
         sig = 0.3
+        sig = 0
         z = randn()*sig
 
         return abs(0.3+sum([b*aexpon(x=t, y=w, p=p, s=s) for b, w, p in zip(B, W, P)])+z)
