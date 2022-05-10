@@ -67,6 +67,8 @@ def main():
     stable = params.get('stable', False)
     alpha = params.get('alpha')
 
+    if not isinstance(kernels, list): kernels = [kernels]
+
     nomulti = args.nomulti
     cores = args.cores
 

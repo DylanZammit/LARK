@@ -438,7 +438,7 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
         plot_post.append([sqrt(nu(x, p, S, W, B)*lark.dt) for x in dom])
 
         if SUBS:
-            if i in i4 and mtype != 'real':
+            if i in i4 and not mtype.startswith('real'):
                 j = i4[i]
                 a, b = j//2, j%2
                 ax[a, b].set_title(f'MCMC sample #{i}')
@@ -485,10 +485,12 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
     plt.figure() # make neater
 
     mynames = {'aexpon': '$K_1$', 'expon': '$K_2$'}
+    namemap = {'aexpon': 'J', 'expon': 'J'} if len(posterior[3][0]) == 1 else mynames
+
     ##################
     Js = pd.DataFrame([J for _, _, J, _, _ in posterior])
     print(Js.mean())
-    Js = Js.rename(columns=mynames)
+    Js = Js.rename(columns=namemap)
     Js.plot(linewidth=0.25)
     #plt.plot(Js, linewidth=0.25)
     if save: savefig(save, 'Jtrace.pdf')
@@ -500,12 +502,22 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
     ps = pd.DataFrame([p for p, _, _, _, _ in posterior])
     print(ps.mean())
     ax = plt.plot(ddd, gamma.pdf(ddd, lark.ap, scale=1/lark.bp), label='prior')
+
     for k in ps:
-        ps[k].hist(density=True, alpha=0.7, bins=30, label=mynames[k])
+        ps[k].hist(density=True, alpha=0.7, bins=30, label=namemap[k])
     plt.legend()
     #plt.hist(ps, label=f'posterior', density=True, alpha=0.7, bins=30)
     #plt.legend()
     if save: savefig(save, 'phist.pdf')
+
+    PARAMS = {}
+    PARAMS['J'] = {k: Js[k].mean() for k in Js}
+    PARAMS['p'] = {k: ps[k].mean() for k in ps}
+    PARAMS['n'] = lark.n
+    PARAMS['N'] = N
+    PARAMS['bip'] = bip
+    with open(os.path.join(save, 'metadata.json'), 'w') as f:
+        json.dump(PARAMS, f)
 
 def main():
     global nomulti, cores, data, profile
@@ -564,7 +576,7 @@ def main():
     assert isclose(sum(p), 1)
 
     Treal = None
-    if args.gentype=='real':
+    if args.gentyp.startswith('real'):
         T, X, Treal = Data.get_stock(n=args.n, ticker=args.ticker)
     else:
         T, X, dB= Data.gen_data_t(n=args.n, mtype=args.gentype)
@@ -595,6 +607,8 @@ def main():
     if args.save: lark.save(save)
     if not args.noplot: plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal, bip=args.bip)
     plt.show()
+
+    
 
 if __name__=='__main__':
     main()
