@@ -1,3 +1,16 @@
+real_test:
+  kernel: [aexpon, expon]
+  eps: 0.01
+  #nu: 10
+  nu: 1
+  alpha: 0.5
+  gammap: [3,3]
+  gammal: [5,300]
+  prop_bwsp: [0.005, 0.05, 0.005, 0.05]
+  #prop_bwsp: [0.005, 0.05, 0.05, 0.05]
+  vplus: 10
+  #stable: True
+  
 real:
   kernel: aexpon
   eps: 0.01
@@ -19,9 +32,8 @@ jump2:
   gammal: [2,200]
   #gammal: [20,1000]
   prop_bwsp: [0.1, 0.05, 0.05, 0.05]
-  #vplus: 10
   vplus: 10
-  stable: True
+  #stable: True
   alpha: 0.5
 
 jump:

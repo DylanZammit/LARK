@@ -74,7 +74,7 @@ def plot_gugu(model, T, gentype='sigt', Treal=None):
 
     mean, low, up= model.s2_gugu()
     mean, low, up = mean/np.sqrt(n), low/np.sqrt(n), up/np.sqrt(n)
-    if gentype !='real': 
+    if not gentype.startswith('real'):
         truevol = [getattr(Data, gentype)(x) for x in dom]
         plt.plot(dom, truevol, label='True volatility', color='orange')
     if Treal is not None:
@@ -89,7 +89,7 @@ def plot_gugu(model, T, gentype='sigt', Treal=None):
     plt.plot(Tdom, model.Y, color='black', alpha=0.5, label='Obeservations')
     plt.legend()
     #RMSE################
-    if gentype!='real':
+    if not gentype.startswith('real'):
         A = np.array([getattr(Data, gentype)(x) for x in T])
         B = mean
         print('\nGUGU RMSE = {}'.format(RMSE(A, B)))

@@ -41,7 +41,7 @@ def main():
     parser.add_argument('--cores', help='Number of cores to use', type=int, default=os.cpu_count())
     parser.add_argument('--save', type=str, help='folder name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
-    parser.add_argument('--kernel', type=str, help='kernel function', default='expon')
+    parser.add_argument('--kernels', type=str, help='kernel function', default='expon')
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     parser.add_argument('--gugum', help='Gugu bin width', type=int, default=20)
     parser.add_argument('--gpgam', help='GP gamma param', type=float, default=10)
@@ -57,7 +57,7 @@ def main():
     else:
         params = {}
 
-    kernel = params.get('kernel', args.kernel)
+    kernels = params.get('kernel', args.kernels.split())
     eps = params.get('eps', args.eps)
     nu = params.get('nu', 1)
     vplus = params.get('vplus', 10)
@@ -85,7 +85,8 @@ def main():
     assert isclose(sum(p), 1)
 
     Treal = None
-    if args.gentype=='real':
+    if args.gentype.startswith('real'):
+    #if args.gentype=='real':
         T, X, Treal = Data.get_stock(n=args.n, ticker=args.ticker)
     else:
         T, X, dB = Data.gen_data_t(n=args.n, mtype=args.gentype)
@@ -97,7 +98,7 @@ def main():
         X = array(data['X'])
         res = data['post']
 
-    lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
+    lark = LARK(T=T, X=X, p=p, eps=eps, kernels=kernels, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, proposals=prop_bwsp,
                nomulti=nomulti, cores=cores, stable=stable, alpha=alpha)
 

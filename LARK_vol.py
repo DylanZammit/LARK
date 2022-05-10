@@ -63,7 +63,7 @@ def time_avg(f):
 
 class LARK(Kernels):
 
-    def __init__(self, T, X, p, eps, kernel, drift=None, nomulti=False, cores=4, 
+    def __init__(self, T, X, p, eps, kernels, drift=None, nomulti=False, cores=4, 
                  nu=1, gammap=None, gammal=None, proposals=None, vplus=10, stable=False, **kwargs):
         '''
         kwargs are passed on as kernel parameters
@@ -88,7 +88,9 @@ class LARK(Kernels):
 
         self.b0 = quantile(abs(self.X), 0.01)/2
 
-        self.kernel = getattr(Kernels(), kernel)
+        self.kernels = {}
+        for kernel in kernels:
+            self.kernels[kernel] = getattr(Kernels(), kernel)
 
         self.dt = 1
         if drift == 'linear':
@@ -118,16 +120,18 @@ class LARK(Kernels):
 
     @time_avg
     def init(self):
-        J = poisson.rvs(self.vplus)
-        self.J = J
-        self.W = list(rand(J))
-        self.B = list(self.birth.rvs(size=J))
-        self.S = list(gamma.rvs(self.al, scale=1/self.bl, size=J))
-        self.p = gamma.rvs(self.ap, scale=1/self.bp)
+        for kernel in self.kernels:
+            J = poisson.rvs(self.vplus)
+            self.J[kernel] = J
+            self.W[kernel] = list(rand(J))
+            self.B[kernel] = list(self.birth.rvs(size=J))
+            self.S[kernel] = list(gamma.rvs(self.al, scale=1/self.bl, size=J))
+            self.p[kernel] = gamma.rvs(self.ap, scale=1/self.bp)
     
     def nu(self, t, p, S, W, B):
-        k = self.kernel
-        out = self.b0 + B@k(t, y=W, p=p, s=S)
+        out = self.b0
+        for name, k in self.kernels.items():
+            out += B[name]@k(t, y=W[name], p=p[name], s=S[name])
         return out
 
     def _l(self, i):
@@ -166,23 +170,23 @@ class LARK(Kernels):
         return out
 
     @time_avg
-    def qb(self, l0, l1, bnew):
+    def qb(self, l0, l1, bnew, J):
         qd = norm.cdf((self.eps-bnew)/self.b_proposal)
         l = l1-l0
-        prior = log(self.vplus)-log(self.J+1)
-        prop_n = log(self.pd+self.pu*qd)-log(self.J+1)
+        prior = log(self.vplus)-log(J+1)
+        prop_n = log(self.pd+self.pu*qd)-log(J+1)
         prop_d = log(self.pb)
         prop = prop_n-prop_d
 
         return min([0, l+prior+prop])
 
     @time_avg
-    def qd(self, l0, l1, bold):
+    def qd(self, l0, l1, bold, J):
         qd = norm.cdf((self.eps-bold)/self.b_proposal)
         l = l1-l0
-        prior = log(self.J)-log(self.vplus)
+        prior = log(J)-log(self.vplus)
         prop_n = log(self.pb)
-        prop_d = log(self.pd+self.pu*qd)-log(self.J)
+        prop_d = log(self.pd+self.pu*qd)-log(J)
         prop = prop_n-prop_d
 
         return min([0, l+prior+prop])
@@ -196,7 +200,7 @@ class LARK(Kernels):
         return min([0, l+prior+prop])
 
     @time_avg
-    def rj_mcmc(self):
+    def rj_mcmc(self, name):
         J1 = deepcopy(self.J)
         W1 = deepcopy(self.W)
         B1 = deepcopy(self.B)
@@ -206,36 +210,36 @@ class LARK(Kernels):
         l0 = self.l()
         birth, death, update = False, False, False
 
-        if u < self.pb or self.J == 0: # birth
+        if u < self.pb or self.J[name] == 0: # birth
             birth = True
-            J1 += 1
+            J1[name] += 1
             w = rand()*1.1-0.1
             b = self.birth.rvs()
             s = gamma.rvs(self.al, scale=1/self.bl) 
 
-            W1.append(w)
-            B1.append(b)
-            S1.append(s)
+            W1[name].append(w)
+            B1[name].append(b)
+            S1[name].append(s)
             l1 = self.l(W=W1, B=B1, S=S1)
 
-            q = self.qb(l0, l1, b)
+            q = self.qb(l0, l1, b, self.J[name])
 
         else:
-            j = randint(0, self.J)
-            b = norm.rvs()*self.b_proposal+self.B[j]
+            j = randint(0, self.J[name])
+            b = norm.rvs()*self.b_proposal+self.B[name][j]
             if b < self.eps or u < self.pb + self.pd: # death
                 death = True
-                J1 -= 1
-                del W1[j], B1[j], S1[j]
+                J1[name] -= 1
+                del W1[name][j], B1[name][j], S1[name][j]
                 
                 l1 = self.l(W=W1, B=B1, S=S1)
-                bold = self.B[j]
-                q = self.qd(l0, l1, bold)
+                bold = self.B[name][j]
+                q = self.qd(l0, l1, bold, self.J[name])
 
             else: # update
                 update = True
-                bold = B1[j]
-                B1[j] = b
+                bold = B1[name][j]
+                B1[name][j] = b
 
                 l1 = self.l(B=B1)
                 q = self.qu(l0, l1, bold, b)
@@ -288,13 +292,13 @@ class LARK(Kernels):
 
 
     @time_avg
-    def sample_s(self):
+    def sample_s(self, name):
         S1 = deepcopy(self.S)
-        sold = S1[self.update_comp]
+        sold = S1[name][self.update_comp]
         snew = sold + norm.rvs()*self.s_proposal
         if snew < 0: return
 
-        S1[self.update_comp] = snew
+        S1[name][self.update_comp] = snew
 
         l0 = self.l()
         l1 = self.l(S=S1)
@@ -308,22 +312,23 @@ class LARK(Kernels):
         #print('sold={}, snew={}'.format(sold, snew))
         e = exponential(1)
         if e+q > 0: 
-            self.S = deepcopy(S1)
+            self.S[name] = deepcopy(S1[name])
             self.accepted['s'] += 1
             self.l0 = l1
         else:
             if self.l0 is None: self.l0 = l0
 
     @time_avg
-    def sample_p(self):
-        pold = self.p
-        pnew = pold + norm.rvs()*self.p_proposal
-        if pnew < 0: return
+    def sample_p(self, name):
+        pnew = deepcopy(self.p)
+        pold = self.p[name]
+        pnew[name] = pold + norm.rvs()*self.p_proposal
+        if pnew[name] < 0: return
 
         l0 = self.l()
         l1 = self.l(p=pnew)
         l = l1-l0
-        prior_n = gamma.logpdf(pnew, self.ap, scale=1/self.bp)
+        prior_n = gamma.logpdf(pnew[name], self.ap, scale=1/self.bp)
         prior_d = gamma.logpdf(pold, self.ap, scale=1/self.bp)
         prior = prior_n - prior_d
         prop = 0
@@ -339,13 +344,13 @@ class LARK(Kernels):
             if self.l0 is None: self.l0 = l0
 
     @time_avg
-    def sample_w(self):
+    def sample_w(self, name):
         W1 = deepcopy(self.W)
-        wold = W1[self.update_comp]
+        wold = W1[name][self.update_comp]
         wnew = wold + norm.rvs()*self.w_proposal
         #if not 0 < wnew < 1: return
 
-        W1[self.update_comp] = wnew
+        W1[name][self.update_comp] = wnew
 
         l0 = self.l()
         l1 = self.l(W=W1)
@@ -355,7 +360,7 @@ class LARK(Kernels):
         #print('wold={}, wnew={}'.format(wold, wnew))
         e = exponential(1)
         if e+q > 0: 
-            self.W = W1
+            self.W[name] = W1[name]
             self.accepted['w'] += 1
             self.l0 = l1
         else:
@@ -379,7 +384,7 @@ class LARK(Kernels):
 
         res = []
 
-        self.S, self.J, self.W, self.B = {}, {}, {}, {}
+        self.p, self.S, self.J, self.W, self.B = {}, {}, {}, {}, {}
 
         self.init()
 
@@ -387,12 +392,13 @@ class LARK(Kernels):
             self.iter = i
             progress(i, N, 'LARK', elapsed=time.time()-START)
 
-            self.rj_mcmc()
-            if self.update:
-                N_update += 1
-                self.sample_s()
-                self.sample_w()
-            self.sample_p()
+            for name in self.kernels:
+                self.rj_mcmc(name)
+                if self.update:
+                    N_update += 1
+                    self.sample_s(name)
+                    self.sample_w(name)
+                self.sample_p(name)
 
             if i >= bip: res.append([self.p, self.S, self.J, self.W, self.B])
 
@@ -453,7 +459,8 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
     plot_post = array(plot_post.mean(0))[0]
 
     #RMSE################
-    if mtype!='real':
+    if not mtype.startswith('real'):
+    #if mtype!='real':
         A = array([getattr(Data, mtype)(x) for x in lark.T])
         B = plot_post
         print('LARK RMSE = {}'.format(RMSE(A, B)))
@@ -465,7 +472,8 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
         Tdom = dom
 
     plt.title('LARK')
-    if mtype!='real':  plt.plot(Tdom, [getattr(Data, mtype)(x) for x in Tdom], label='True volatility', color='orange')
+    if not mtype.startswith('real'):  plt.plot(Tdom, [getattr(Data, mtype)(x) for x in Tdom], label='True volatility', color='orange')
+    #if mtype!='real':  plt.plot(Tdom, [getattr(Data, mtype)(x) for x in Tdom], label='True volatility', color='orange')
 
     plt.plot(Tdom, plot_post, label='Posterior Mean', color='C0')
     plt.fill_between(Tdom, array(quantiles[:, 0].flatten())[0], array(quantiles[:, 1].flatten())[0], alpha=0.5,
@@ -476,21 +484,27 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
     if save: savefig(save, 'LARK.pdf')
     plt.figure() # make neater
 
+    mynames = {'aexpon': '$K_1$', 'expon': '$K_2$'}
     ##################
-    Js = [J for _, _, J, _, _ in posterior]
-    print('J mean = {}'.format(mean(Js)))
-    plt.plot(Js, label='J trace', linewidth=0.25)
+    Js = pd.DataFrame([J for _, _, J, _, _ in posterior])
+    print(Js.mean())
+    Js = Js.rename(columns=mynames)
+    Js.plot(linewidth=0.25)
+    #plt.plot(Js, linewidth=0.25)
     if save: savefig(save, 'Jtrace.pdf')
     ##################
 
     plt.figure()
     ddd = linspace(0, 3, 1000)
     plt.title('p')
-    ps = [p for p, _, _, _, _ in posterior]
-    print('p mean = {}'.format(mean(ps)))
-    plt.hist(ps, label=f'posterior', density=True, alpha=0.7, bins=30)
-    plt.plot(ddd, gamma.pdf(ddd, lark.ap, scale=1/lark.bp), label='prior')
+    ps = pd.DataFrame([p for p, _, _, _, _ in posterior])
+    print(ps.mean())
+    ax = plt.plot(ddd, gamma.pdf(ddd, lark.ap, scale=1/lark.bp), label='prior')
+    for k in ps:
+        ps[k].hist(density=True, alpha=0.7, bins=30, label=mynames[k])
     plt.legend()
+    #plt.hist(ps, label=f'posterior', density=True, alpha=0.7, bins=30)
+    #plt.legend()
     if save: savefig(save, 'phist.pdf')
 
 def main():
@@ -509,7 +523,7 @@ def main():
     parser.add_argument('--cores', help='Number of cores to use', type=int, default=os.cpu_count())
     parser.add_argument('--save', type=str, help='folder name to save to', default=None)
     parser.add_argument('--load', type=str, help='file name to load from', default=None)
-    parser.add_argument('--kernel', type=str, help='kernel function', default='expon')
+    parser.add_argument('--kernels', type=str, help='kernel function', default='expon')
     parser.add_argument('--gentype', type=str, help='vol fn to use', default='sigt')
     parser.add_argument('--config', type=str, help='config with params based on gentype', default='config.yml')
     args = parser.parse_args()
@@ -522,7 +536,7 @@ def main():
     else:
         params = {}
 
-    kernel = params.get('kernel', args.kernel)
+    kernel = params.get('kernels', args.kernel.split())
     eps = params.get('eps', args.eps)
     nu = params.get('nu', 1)
     vplus = params.get('vplus', 10)
@@ -565,7 +579,7 @@ def main():
     except:
         print('No TX.json found')
     ############
-    lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
+    lark = LARK(T=T, X=X, p=p, eps=eps, kernels=kernels, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, 
                 proposals=prop_bwsp, stable=stable, alpha=alpha, nomulti=nomulti)
     if not args.load:
