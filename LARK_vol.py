@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import numpy as np
 import yaml
 from multiprocessing import Pool
 import os
@@ -19,6 +20,7 @@ from kernels import Kernels
 from getdata import Data
 import time
 import warnings
+import pickle
 random.seed(0)
 #warnings.filterwarnings("ignore")
 
@@ -142,7 +144,8 @@ class LARK(Kernels):
 
     def __getstate__(self):
         self_dict = self.__dict__.copy()
-        del self_dict['pool']
+        if 'pool' in self_dict:
+            del self_dict['pool']
         return self_dict
 
     def __setstate__(self, state):
@@ -361,14 +364,19 @@ class LARK(Kernels):
         else:
             if self.l0 is None: self.l0 = l0
 
-    def save(self, save):
-        out = {
-            'T': list(self.T),
-            'X': list(self.X),
-            'post': list(self.res)
-            }
-        with open(os.path.join(save, 'res.json'), 'w') as f:
-            json.dump(out, f)
+    def save(self, fn):
+        with open(os.path.join(fn, 'lark.pkl'), 'wb') as f:
+            pickle.dump(self, f)
+        print(f'saved LARK to {fn}')
+
+    #def save(self, save):
+    #    out = {
+    #        'T': list(self.T),
+    #        'X': list(self.X),
+    #        'post': list(self.res)
+    #        }
+    #    with open(os.path.join(save, 'res.json'), 'w') as f:
+    #        json.dump(out, f)
 
     @time_avg
     @timer
@@ -418,45 +426,59 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
 
     plot_post = []
     SUBS = False
-    if SUBS:
-        i4 = {1: 0, 100: 1, 2000: 2, 4000: 3}
-        #i4 = {1000: 0, 4000: 1, 10000: 2, 40000: 3}
-        fig, ax = plt.subplots(2, 2)
-        fig.suptitle('MCMC samples at different iterations')
-        fig.tight_layout()
-    start_plot = time.time()
-    for i, post in enumerate(posterior):
-        progress(i, N, 'Plotting', elapsed=time.time()-start_plot)
-        if i < bip: continue
-        p, S, J, W, B = post
-        plot_post.append([sqrt(nu(x, p, S, W, B)*lark.dt) for x in dom])
-
+    if not hasattr(lark, 'posterior_fns') or not hasattr(lark, 'posterior_fns') or SUBS:
         if SUBS:
-            if i in i4 and mtype != 'real':
-                j = i4[i]
-                a, b = j//2, j%2
-                ax[a, b].set_title(f'MCMC sample #{i}')
-                ax[a, b].plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='C1')
-                ax[a, b].plot(dom, [sqrt(lark.nu(t, p, S, W, B)) for t in dom], label='MCMC sample', color='C0')
-                ax[a, b].plot((W,W),([0 for w in W], [b for b in B]), c='black')
+            i4 = {1: 0, 100: 1, 2000: 2, 4000: 3}
+            #i4 = {1000: 0, 4000: 1, 10000: 2, 40000: 3}
+            fig, ax = plt.subplots(2, 2)
+            fig.suptitle('MCMC samples at different number of iterations')
+            fig.tight_layout()
+        start_plot = time.time()
 
-                if j == 3:
-                    if save: savefig(save, 'MCMC_iters.pdf')
-                    plt.figure() # make neater
+        for i, post in enumerate(posterior):
+            progress(i, N, 'Plotting', elapsed=time.time()-start_plot)
+            if i < bip: continue
+            p, S, J, W, B = post
+            plot_post.append([sqrt(nu(x, p, S, W, B)*lark.dt) for x in dom])
 
-    plot_post = matrix(plot_post)
+            if SUBS:
+                if i in i4 and mtype != 'real':
+                    j = i4[i]
+                    a, b = j//2, j%2
+                    ax[a, b].set_title(f'MCMC sample #{i}')
+                    ax[a, b].plot(dom, [getattr(Data, mtype)(x) for x in dom], label='True volatility', color='C1')
+                    ax[a, b].plot(dom, [sqrt(lark.nu(t, p, S, W, B)) for t in dom], label='MCMC sample', color='C0')
+                    ax[a, b].plot((W,W),([0 for w in W], [b for b in B]), c='black')
 
-    quantiles = []
-    for i in range(m): quantiles.append(quantile(plot_post[:,i], [0.025, 0.975]))
-    quantiles = matrix(quantiles)
+                    if j == 3:
+                        if save: savefig(save, 'MCMC_iters.pdf')
+                        plt.figure() # make neater
+
+        plot_post = matrix(plot_post)
+
+        quantiles = []
+        for i in range(m): quantiles.append(quantile(plot_post[:,i], [0.025, 0.975]))
+        quantiles = matrix(quantiles)
+
+        setattr(lark, 'posterior_fns', plot_post)
+        setattr(lark, 'quantiles', quantiles )
+    else:
+        plot_post = lark.posterior_fns
+        quantiles = lark.quantiles
 
     plot_post = array(plot_post.mean(0))[0]
 
+
     #RMSE################
+        
     if mtype!='real':
         A = array([getattr(Data, mtype)(x) for x in lark.T])
-        B = plot_post
-        print('LARK RMSE = {}'.format(RMSE(A, B)))
+    else:
+        A = np.sqrt(lark.X**2)
+    B = np.copy(plot_post)
+    box = MSE_boxplot(A, B)
+    print('LARK MSE = {}'.format(MSE(A, B)))
+
     #RMSE################
     if Treal is not None:
         Tdom = Treal#[1:]
@@ -492,6 +514,8 @@ def plot_out(posterior, lark, mtype='real', save=None, Treal=None, bip=0):
     plt.plot(ddd, gamma.pdf(ddd, lark.ap, scale=1/lark.bp), label='prior')
     plt.legend()
     if save: savefig(save, 'phist.pdf')
+
+    return box
 
 def main():
     global nomulti, cores, data, profile

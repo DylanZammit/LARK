@@ -5,6 +5,7 @@ from scipy.stats import rv_continuous, pareto
 from numpy import *
 import matplotlib.pyplot as plt
 import os
+from functools import partial
 
 data = '/home/dylan/git/LARK/data'
 def expinv(x, d=1e-9):
@@ -145,3 +146,9 @@ def savefig(save, name):
 
 def RMSE(x, y):
     return sqrt(sum((x-y)**2)/len(x))
+
+def MSE(x, y):
+    return sum((x-y)**2)/len(x)
+
+def MSE_boxplot(x, y):
+    return (x-y)**2

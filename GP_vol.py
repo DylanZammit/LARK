@@ -1,7 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from getdata import Data
-from common import RMSE
+from common import RMSE, MSE, MSE_boxplot
+import pickle
 
 def K(x, y, gamma=1):
     return np.exp(-gamma*np.linalg.norm(x-y))
@@ -27,15 +28,19 @@ def plot_gp(gp, Z, gentype='sigt', Treal=None):
     plt.plot(Tdom, Z, color='black', alpha=0.5, label='Observations')
     if gentype != 'real': 
         plt.plot(T, [getattr(Data, gentype)(t) for t in T], label='True Volatility', color='orange')
-    plt.plot(Tdom, mean, label='GP posterior', color='C0')
+    plt.plot(Tdom, mean, label='Posterior Mean', color='C0')
     plt.fill_between(Tdom, lower, upper, alpha=0.5, color='C0')
     plt.legend()
     #RMSE################
     if gentype!='real':
         A = np.array([getattr(Data, gentype)(x) for x in T])
-        B = g(gp.E(T))/np.sqrt(n)
-        print('\nGP RMSE = {}'.format(RMSE(A, B)))
+    else:
+        A = np.sqrt(Z**2)
+    B = g(gp.E(T))/np.sqrt(n)
+    box = MSE_boxplot(A, B)
+    print('\nGP MSE = {}'.format(MSE(A, B)))
     #RMSE################
+    return box
 
 class Model:
 
@@ -91,6 +96,19 @@ class GP:
         sg = 1 if upper else -1
         return 1.96*sg*np.sqrt(self.V(D))+self.E(D)
 
+
+    def save(self, fn):
+        with open(fn, 'wb') as f:
+            pickle.dump(self, f)
+        print(f'saved to {fn}')
+
+    def load(self, fn):
+        with open(fn, 'rb') as f:
+            out = pickle.load(f)
+        print(f'loaded {fn}')
+        return out
+
+
 if __name__ == '__main__':
     n = 400
 
@@ -128,3 +146,7 @@ if __name__ == '__main__':
 
     plt.legend()
     plt.show()
+
+    all_gp.save('test.pkl')
+    TEST = all_gp.load('test.pkl')
+    breakpoint()

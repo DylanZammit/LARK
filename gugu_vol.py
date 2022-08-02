@@ -7,7 +7,7 @@ from scipy.optimize import fsolve
 import pandas as pd
 import yfinance as yf
 from getdata import Data
-from common import RMSE
+from common import RMSE, MSE, MSE_boxplot
 
 def gaus_ker(x):
     return 1/np.sqrt(2*np.pi)*np.exp(-x**2/2)
@@ -82,7 +82,7 @@ def plot_gugu(model, T, gentype='sigt', Treal=None):
         plt.xticks(rotation=45)
     else:
         Tdom = T
-    plt.plot(Tdom, mean, label='Histogram-Type', color='C0')
+    plt.plot(Tdom, mean, label='Posterior Mean', color='C0')
     plt.fill_between(Tdom, low, up, alpha=0.5, color='C0')
     #plt.plot(df.index, [model.s2_kernel(t) for t in dom], label='kernel_boxcar')
     #plt.plot(T, [model.s2_kernel_gauss(t) for t in dom], label='kernel_gauss')
@@ -91,8 +91,12 @@ def plot_gugu(model, T, gentype='sigt', Treal=None):
     #RMSE################
     if gentype!='real':
         A = np.array([getattr(Data, gentype)(x) for x in T])
-        B = mean
-        print('\nGUGU RMSE = {}'.format(RMSE(A, B)))
+    else:
+        A = np.sqrt(model.Y**2)
+    B = mean
+    box = MSE_boxplot(A, B)
+    print('\nGUGU MSE = {}'.format(MSE(A, B)))
+    return box
     #RMSE################
 
 def main():

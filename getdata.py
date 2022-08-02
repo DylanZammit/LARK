@@ -87,7 +87,7 @@ class Data:
         return T, dX, dB
 
     @classmethod
-    def get_stock(self, n=None, start='2018-05-28', end='2022-03-26', ticker='AAPL', returns=True):
+    def get_stock(self, n=None, start='2018-05-26', end='2022-03-26', ticker='AAPL', returns=True):
         a = yf.Ticker(ticker)
         if n:
             end = pd.Timestamp.today().floor('D')

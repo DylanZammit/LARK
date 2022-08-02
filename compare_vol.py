@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import yaml
+import numpy as np
 from multiprocessing import Pool
 import os
 import argparse
@@ -19,6 +20,7 @@ from GP_vol import GP, plot_gp
 from gugu_vol import Gugu, plot_gugu
 from kernels import Kernels
 import warnings
+import pickle
 #warnings.filterwarnings("ignore")
 random.seed(0)
 
@@ -29,7 +31,7 @@ def main():
     global data
     parser = argparse.ArgumentParser(description='MCMC setup args.')
     #LARK
-    parser.add_argument('--n', help='Sample size [100]', type=int, default=100)
+    parser.add_argument('--n', help='Sample size [100]', type=int, default=None)
     parser.add_argument('--N', help='MCMC iterations [1000]', type=int, default=1000)
     parser.add_argument('--bip', help='MCMC burn-in period [0]', type=int, default=0)
     parser.add_argument('--eps', help='epsilon [0.5]', type=float, default=0.5)
@@ -90,14 +92,17 @@ def main():
     else:
         T, X, dB = Data.gen_data_t(n=args.n, mtype=args.gentype)
 
-    if args.load:
+    OLDMETHOD = True
+
+    if args.load and OLDMETHOD:
+
         with open(os.path.join(load, 'res.json')) as fn:
             data = json.load(fn)
         T = array(data['T'])
         X = array(data['X'])
         res = data['post']
 
-    lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
+    if OLDMETHOD: lark = LARK(T=T, X=X, p=p, eps=eps, kernel=kernel, drift=args.drift, 
                 nu=nu, vplus=vplus, gammap=gammap, gammal=gammal, proposals=prop_bwsp,
                nomulti=nomulti, cores=cores, stable=stable, alpha=alpha)
 
@@ -107,13 +112,22 @@ def main():
             res = lark(N=args.N)
             print('done')
         else:
-            print('Loading LARK method...', end='')
-            lark.res = res
-            print('done')
-        if args.save: lark.save(save)
+            if OLDMETHOD:
+                lark.res = res
+                print('done')
+            else:
+                print('Loading LARK method...', end='')
+                data = '/home/dylan/git/LARK/data'
+                load = os.path.join(data, args.load, 'lark.pkl')
+                with open(load, 'rb') as f:
+                    lark = pickle.load(f)
+                    print(f'loaded LARK args.load')
+                res = lark.res
         if not args.noplot: 
-            plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal, bip=args.bip)
+            lark_box = plot_out(res, lark, mtype=args.gentype, save=save, Treal=Treal, bip=args.bip)
+        if args.save: lark.save(save)
         plt.figure()
+
 
     T, X = lark.T, lark.X
     if not args.nogp:
@@ -128,7 +142,7 @@ def main():
 
         gp = GP(T, Z, K, sig=1) # change sig
         if not args.noplot: 
-            plot_gp(gp, X, args.gentype, Treal=Treal)
+            gp_box = plot_gp(gp, X, args.gentype, Treal=Treal)
             if args.save: savefig(args.save, 'GP.pdf')
         plt.figure()
         print('done')
@@ -137,9 +151,19 @@ def main():
         print('Running GUGU method...', end='')
         model = Gugu(X, m=args.gugum)
         if not args.noplot:
-            plot_gugu(model, T, args.gentype, Treal=Treal)
+            gugu_box = plot_gugu(model, T, args.gentype, Treal=Treal)
             if args.save: savefig(args.save, 'gugu.pdf')
         print('done')
+
+    #if args.gentype != 'real':
+    plt.figure()
+    box = pd.DataFrame([gp_box, gugu_box, lark_box]).T
+    box.columns = ['GP Model', 'Histogram-Type Model', 'LARK']
+    box.boxplot(sym='', return_type='dict', whis=(5, 95))
+    plt.title('Square Error Boxplot')
+    print('Quantiles')
+    print(box.quantile([0, 0.25, 0.5, 0.75, 1.0]))
+    if args.save: savefig(args.save, 'boxplots.pdf')
 
     plt.show()
 
